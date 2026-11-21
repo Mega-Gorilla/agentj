@@ -134,8 +134,10 @@ pub fn agent(card: &AgentCard) -> String {
 			State::Permission => ("#C2410C", "承認待ち", "#FFFFFF"),
 			State::Input => ("#B45309", "入力待ち", "#FFFFFF"),
 			State::Error => ("#991B1B", "エラー", "#FFFFFF"),
-			State::Done => ("#1D4ED8", "返答済み", "#DBEAFE"),
-			State::Working => ("#14532D", "作業中", "#4ADE80"),
+			// Green = an answer is waiting to be read. Working needs nobody,
+			// so it stays dark.
+			State::Done => ("#15803D", "返答済み", "#DCFCE7"),
+			State::Working => ("#000000", "作業中", "#94A3B8"),
 			State::Reviewing => ("#134E4A", "自動審査中", "#5EEAD4"),
 			State::Idle => ("#1E293B", "待機中", "#94A3B8"),
 		}
@@ -170,7 +172,7 @@ pub fn agent(card: &AgentCard) -> String {
 /// Counts across all sessions; turns orange when something needs the user.
 pub fn agents_summary(attention: usize, done: usize, working: usize) -> String {
 	let background = if attention > 0 { "#7C2D12" } else { "#0F172A" };
-	let rows = [("要対応", attention, "#FB923C"), ("返答済", done, "#93C5FD"), ("作業中", working, "#4ADE80")];
+	let rows = [("要対応", attention, "#FB923C"), ("返答済", done, "#4ADE80"), ("作業中", working, "#94A3B8")];
 	let inner: String = rows
 		.iter()
 		.enumerate()
