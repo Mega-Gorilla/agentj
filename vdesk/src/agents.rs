@@ -1,15 +1,27 @@
 //! AI agent sessions (Claude Code, Codex), as reported by their hooks.
 //!
 //! Hooks run `agent-hook.exe`, which posts a trimmed event to a small HTTP
-//! listener on 127.0.0.1. Each event moves its session to a state. Names come
-//! from the agents' own files (Claude transcript `custom-title`, Codex
-//! `session_index.jsonl`), and the virtual desktop from either the Claude
-//! window whose title is the session name, or the desktop that was showing
-//! when the user submitted a prompt.
+//! listener on 127.0.0.1. [`Tracker`] turns the events into session states; it
+//! does no I/O, so its rules are unit tested. Hooks run in the background and
+//! are not delivered in order, so every rule goes by the time taken in the
+//! hook (`ts`), not by arrival.
+//!
+//! Approval requests are tracked per tool call: a request stays open until
+//! that call finishes or the turn ends, whatever other calls do meanwhile.
+//! Neither agent reports "approved". With Codex automatic review the request
+//! goes to a reviewer, not the user, and nothing in the hook says which, so
+//! the config file decides how it is shown (see [`State::Reviewing`]).
+//!
+//! Names come from the agents' own files (Claude transcript `custom-title`,
+//! Codex `session_index.jsonl`), and the virtual desktop from either the
+//! Claude window whose title is the session name, or the desktop that was
+//! showing when the user submitted a prompt. A Codex thread with neither
+//! borrows the desktop of the Claude session with the same name.
 
 use std::collections::HashMap;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -28,8 +40,18 @@ const STALE_MS: u64 = 15 * 60 * 1000;
 const FORGET_MS: u64 = 12 * 60 * 60 * 1000;
 /// How often a session's name is re-read from disk.
 const NAME_REFRESH_MS: u64 = 10_000;
+/// An automatic review takes seconds. A request open for longer than this is
+/// shown as waiting for the user after all: the thread may not be using the
+/// reviewer the config file names.
+const REVIEW_OVERDUE_MS: u64 = 2 * 60 * 1000;
+/// How long the end of a session is remembered, to drop its late events.
+const ENDED_KEEP_MS: u64 = 60 * 60 * 1000;
+/// Finished calls remembered per session, for requests that arrive after them.
+const FINISHED_KEEP: usize = 16;
 /// Codex names its automatic approval-review subagents like this.
 const CODEX_REVIEWER: &str = "Guardian review";
+/// Title of a Claude desktop window that does not show its session's name.
+const APP_TITLE: &str = "Claude";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Tool {
@@ -41,6 +63,9 @@ pub enum Tool {
 pub enum State {
 	Idle,
 	Working,
+	/// Codex: an approval request is with the automatic reviewer. Nothing for
+	/// the user to do.
+	Reviewing,
 	Permission,
 	Input,
 	Done,
@@ -55,38 +80,114 @@ impl State {
 			State::Input => 1,
 			State::Error => 2,
 			State::Done => 3,
-			State::Working => 4,
-			State::Idle => 5,
+			State::Reviewing => 4,
+			State::Working => 5,
+			State::Idle => 6,
 		}
+	}
+
+	/// The user has to do something before the session can go on.
+	pub fn needs_user(self) -> bool {
+		matches!(self, State::Permission | State::Input | State::Error)
 	}
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Session {
+/// A session as shown on the deck.
+#[derive(Clone, Debug)]
+pub struct View {
 	pub tool: Tool,
-	pub id: String,
-	pub name: Option<String>,
-	pub cwd: Option<String>,
-	pub transcript: Option<String>,
+	pub label: String,
 	pub state: State,
-	/// When the state last changed (ms since epoch, taken in the hook).
+	/// "Working" with no sign of life for a long time.
+	pub stale: bool,
+	/// When it entered `state` (ms since epoch).
 	pub since: u64,
-	/// Newest hook time seen; older events arriving late only update metadata.
-	pub last: u64,
-	/// Virtual desktop GUID.
+	/// Virtual desktop GUID, if known.
 	pub desktop: Option<String>,
+}
+
+/// An approval request that has not been answered as far as we know.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct Ask {
+	/// Hash of the tool call it is for; 0 = unknown.
+	call: u64,
+	at: u64,
+}
+
+/// A tool call that has started and not finished.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct Call {
+	id: String,
+	call: u64,
+	at: u64,
+}
+
+/// A tool call that finished without an approval request being open for it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+struct Finished {
+	id: Option<String>,
+	call: u64,
+	at: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Session {
+	tool: Tool,
+	id: String,
+	name: Option<String>,
+	cwd: Option<String>,
+	transcript: Option<String>,
+	/// What the events say apart from approvals (never Permission / Reviewing;
+	/// those come from `asks`, see `shown`).
+	state: State,
+	/// When `state` last changed (ms since epoch, taken in the hook).
+	since: u64,
+	/// Newest hook time seen; older events arriving late do not change `state`.
+	last: u64,
+	/// Virtual desktop GUID.
+	desktop: Option<String>,
 	/// The user has typed into this session since we started tracking it.
 	#[serde(default)]
-	pub prompted: bool,
+	prompted: bool,
 	/// Not a session to show (Codex reviewer threads and other subagents).
 	#[serde(default)]
-	pub hidden: bool,
+	hidden: bool,
+	#[serde(default)]
+	asks: Vec<Ask>,
+	#[serde(default)]
+	open: Vec<Call>,
+	#[serde(default)]
+	finished: Vec<Finished>,
 	#[serde(skip)]
 	name_checked: u64,
+	/// How far the transcript has been searched for a title.
+	#[serde(skip)]
+	title_offset: u64,
 }
 
 impl Session {
-	pub fn label(&self) -> String {
+	fn new(tool: Tool, id: &str, ts: u64) -> Self {
+		Session {
+			tool,
+			id: id.to_owned(),
+			name: None,
+			cwd: None,
+			transcript: None,
+			state: State::Idle,
+			since: ts,
+			last: 0,
+			desktop: None,
+			prompted: false,
+			hidden: false,
+			asks: Vec::new(),
+			open: Vec::new(),
+			finished: Vec::new(),
+			name_checked: 0,
+			title_offset: 0,
+		}
+	}
+
+	fn label(&self) -> String {
 		if let Some(name) = self.name.as_deref().filter(|n| !n.trim().is_empty()) {
 			return name.trim().to_owned();
 		}
@@ -97,39 +198,104 @@ impl Session {
 			.unwrap_or_else(|| "(名前なし)".to_owned())
 	}
 
-	pub fn is_stale(&self, now: u64) -> bool {
-		self.state == State::Working && now.saturating_sub(self.last) > STALE_MS
+	fn is_stale(&self, now: u64) -> bool {
+		self.state == State::Working && self.asks.is_empty() && now.saturating_sub(self.last) > STALE_MS
 	}
 
 	fn visible(&self) -> bool {
 		!self.hidden && (self.name.is_some() || self.prompted)
 	}
-}
 
-static SESSIONS: LazyLock<Mutex<HashMap<String, Session>>> = LazyLock::new(|| Mutex::new(load()));
-static CHANGED: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
+	/// The state to show and when it began. An open approval request wins
+	/// over whatever else the session is doing.
+	fn shown(&self, now: u64, codex_auto_review: bool) -> (State, u64) {
+		match self.asks.iter().map(|a| a.at).min() {
+			Some(at) if self.tool == Tool::Codex && codex_auto_review && now.saturating_sub(at) < REVIEW_OVERDUE_MS => {
+				(State::Reviewing, at)
+			}
+			Some(at) => (State::Permission, at),
+			None => (self.state, self.since),
+		}
+	}
 
-pub fn subscribe() -> watch::Receiver<u64> {
-	CHANGED.subscribe()
-}
-
-fn changed() {
-	CHANGED.send_modify(|v| *v = v.wrapping_add(1));
-	save();
-}
-
-pub fn now_ms() -> u64 {
-	SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
-}
-
-/// Sessions to show on the deck.
-pub fn visible() -> Vec<Session> {
-	SESSIONS.lock().unwrap().values().filter(|s| s.visible()).cloned().collect()
+	/// Follow tool calls and the approval requests made for them.
+	///
+	/// Order within one call is PreToolUse, PermissionRequest (only when it
+	/// needs approval), then PostToolUse once it has run. Only the Pre and
+	/// Post events carry the call's id, so a request is matched to its call by
+	/// a hash of the tool input (`Event::call`).
+	fn track_calls(&mut self, event: &Event, codex_auto_review: bool) {
+		let (ts, call) = (event.ts, event.call.unwrap_or(0));
+		match event.hook_event_name.as_str() {
+			"PreToolUse" => {
+				// Codex sends nothing when a request is rejected. The model
+				// only starts another call after the earlier ones came back,
+				// so older requests are settled. Only relied on under
+				// automatic review, where dropping one early costs nothing.
+				if self.tool == Tool::Codex && codex_auto_review {
+					self.asks.retain(|a| a.at >= ts);
+				}
+				let Some(id) = event.tool_use_id.as_deref() else { return };
+				let known = self.open.iter().any(|c| c.id == id) || self.finished.iter().any(|f| f.id.as_deref() == Some(id));
+				if !known {
+					self.open.push(Call { id: id.to_owned(), call, at: ts });
+				}
+			}
+			"PostToolUse" | "PostToolUseFailure" => {
+				if let Some(id) = event.tool_use_id.as_deref() {
+					self.open.retain(|c| c.id != id);
+				}
+				let mine = self
+					.asks
+					.iter()
+					.position(|a| call != 0 && a.call == call && a.at <= ts)
+					.or_else(|| self.asks.iter().position(|a| a.call == 0));
+				match mine {
+					Some(i) => {
+						self.asks.remove(i);
+					}
+					// Its request, if any, has not arrived yet.
+					None => {
+						self.finished.push(Finished { id: event.tool_use_id.clone(), call, at: ts });
+						if self.finished.len() > FINISHED_KEEP {
+							self.finished.remove(0);
+						}
+					}
+				}
+				// A request can only be waiting on a call that is still
+				// running. Catches requests whose hash matched no call.
+				while self.asks.len() > self.open.len() {
+					log::info!("{:?} {}: an approval request matched no running call, dropped", self.tool, self.label());
+					self.asks.remove(0);
+				}
+			}
+			"PermissionRequest" => {
+				// Hooks are not delivered in order: the call may be over already.
+				if let Some(i) = self.finished.iter().position(|f| call != 0 && f.call == call && f.at >= ts) {
+					self.finished.remove(i);
+				} else {
+					self.asks.push(Ask { call, at: ts });
+				}
+			}
+			// Claude Code's reminder, about 6 s into an unanswered prompt.
+			"Notification" if event.notification_type.as_deref() == Some("permission_prompt") => {
+				if self.asks.is_empty() {
+					self.asks.push(Ask { call: 0, at: ts });
+				}
+			}
+			// The turn, or the batch of calls, is over: nothing is pending.
+			"Stop" | "StopFailure" | "Interrupt" | "SessionStart" | "UserPromptSubmit" | "PostToolBatch" => {
+				self.asks.retain(|a| a.at > ts);
+				self.open.retain(|c| c.at > ts);
+			}
+			_ => {}
+		}
+	}
 }
 
 // ---------------------------------------------------------------- events
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct Event {
 	hook_event_name: String,
 	session_id: String,
@@ -139,19 +305,23 @@ struct Event {
 	session_title: Option<String>,
 	agent_id: Option<String>,
 	agent_type: Option<String>,
+	tool_use_id: Option<String>,
+	/// Hash of the tool call's input, added by agent-hook.
+	call: Option<u64>,
 	#[serde(default)]
 	ts: u64,
 }
 
+/// What an event says the session is doing, apart from approvals.
 fn next_state(event: &Event) -> Option<State> {
 	match event.hook_event_name.as_str() {
 		"SessionStart" => Some(State::Idle),
-		"UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure" | "PreCompact" | "PostCompact"
-		| "SubagentStart" | "PreModelRequest" => Some(State::Working),
-		"PermissionRequest" => Some(State::Permission),
+		"UserPromptSubmit" | "PreToolUse" | "PostToolUse" | "PostToolUseFailure" | "PostToolBatch" | "PreCompact"
+		| "PostCompact" | "SubagentStart" => Some(State::Working),
+		// agent_needs_input is left out: it also carries auto-mode classifier
+		// notices that need nobody.
 		"Notification" => match event.notification_type.as_deref() {
-			Some("permission_prompt") => Some(State::Permission),
-			Some("elicitation_dialog" | "elicitation_url_dialog" | "agent_needs_input") => Some(State::Input),
+			Some("elicitation_dialog" | "elicitation_url_dialog") => Some(State::Input),
 			Some("idle_prompt") => Some(State::Done),
 			_ => None,
 		},
@@ -174,71 +344,205 @@ fn typed_from(tool: Tool, process: &str) -> bool {
 	own.iter().chain(terminals.iter()).any(|p| p.eq_ignore_ascii_case(process))
 }
 
+fn key(tool: Tool, session_id: &str) -> String {
+	format!("{tool:?}:{session_id}")
+}
+
+/// All sessions and the rules that move them. No I/O.
+#[derive(Default)]
+struct Tracker {
+	sessions: HashMap<String, Session>,
+	/// When sessions ended, so that their late events do not bring them back.
+	ended: HashMap<String, u64>,
+}
+
+impl Tracker {
+	/// Apply one hook event. Returns whether anything may have changed.
+	fn apply(&mut self, tool: Tool, mut event: Event, foreground: Option<WindowInfo>, codex_auto_review: bool) -> bool {
+		// Codex reports its subagents with agent_*, under the parent's session
+		// id. Claude reports subagent work inside the parent session, which is fine.
+		if tool == Tool::Codex && (event.agent_id.is_some() || event.agent_type.is_some()) {
+			return false;
+		}
+		let key = key(tool, &event.session_id);
+		if self.ended.get(&key).is_some_and(|&ended| event.ts <= ended) {
+			return false; // from before the session ended
+		}
+		if event.hook_event_name == "SessionEnd" {
+			if let Some(s) = self.sessions.get(&key) {
+				if event.ts < s.last {
+					log::info!("{tool:?} {}: an old SessionEnd arrived late, ignored", s.label());
+					return false; // the session has gone on since
+				}
+				log::info!("{tool:?} {}: ended", s.label());
+			}
+			self.sessions.remove(&key);
+			self.ended.insert(key, event.ts);
+			return true;
+		}
+		self.ended.remove(&key); // resumed
+
+		// A window titled with another of this tool's sessions is that
+		// session's, not this one's.
+		let others: Vec<String> =
+			self.sessions.iter().filter(|(k, s)| **k != key && s.tool == tool).filter_map(|(_, s)| s.name.clone()).collect();
+		let session = self.sessions.entry(key).or_insert_with(|| Session::new(tool, &event.session_id, event.ts));
+		let before = session.shown(event.ts, codex_auto_review).0;
+
+		if let Some(cwd) = event.cwd.take() {
+			session.cwd = Some(cwd);
+		}
+		if let Some(path) = event.transcript_path.take() {
+			session.transcript = Some(path);
+		}
+		if let Some(title) = event.session_title.take().filter(|t| !t.trim().is_empty()) {
+			session.name = Some(title);
+		}
+		if event.hook_event_name == "UserPromptSubmit" {
+			session.prompted = true;
+			session.name_checked = 0; // a first prompt is when names usually appear
+			// A message sent while the session is busy waits in a queue and only
+			// reaches the hook when it is delivered, by which time the user may
+			// well be on another desktop.
+			let busy = matches!(session.state, State::Working | State::Input) || !session.asks.is_empty();
+			let queued = busy && !session.is_stale(event.ts);
+			match foreground {
+				Some(fg) if queued => log::info!("{tool:?} {}: queued prompt, desktop of {:?} not used", session.label(), fg.title),
+				Some(fg) if others.contains(&fg.title) => {
+					log::info!("{tool:?} {}: front window {:?} is another session's, not used", session.label(), fg.title)
+				}
+				Some(fg) if typed_from(tool, &fg.process) && fg.desktop.is_some() => session.desktop = fg.desktop,
+				_ => {}
+			}
+		}
+
+		session.track_calls(&event, codex_auto_review);
+		if event.ts >= session.last {
+			session.last = event.ts;
+			if let Some(state) = next_state(&event)
+				&& state != session.state
+			{
+				session.state = state;
+				session.since = event.ts;
+			}
+		}
+		let after = session.shown(event.ts, codex_auto_review).0;
+		if after != before {
+			log::info!("{tool:?} {}: {before:?} -> {after:?} ({})", session.label(), event.hook_event_name);
+		}
+		true
+	}
+
+	/// Sessions to show on the deck.
+	fn views(&self, now: u64, codex_auto_review: bool) -> Vec<View> {
+		self.sessions
+			.values()
+			.filter(|s| s.visible())
+			.map(|s| {
+				let (state, since) = s.shown(now, codex_auto_review);
+				let desktop = s.desktop.clone().or_else(|| self.namesake_desktop(s));
+				View { tool: s.tool, label: s.label(), state, stale: s.is_stale(now), since, desktop }
+			})
+			.collect()
+	}
+
+	/// Every ChatGPT window is titled just "ChatGPT", so a Codex thread that
+	/// has not had a prompt typed since we started tracking it borrows the
+	/// desktop of the Claude session with the same name (the user names a
+	/// project's Claude session and Codex thread alike). Not stored, so it
+	/// follows the Claude window if it moves; none if same-named sessions sit
+	/// on different desktops.
+	fn namesake_desktop(&self, codex: &Session) -> Option<String> {
+		if codex.tool != Tool::Codex {
+			return None;
+		}
+		let name = codex.name.as_deref()?.trim();
+		let mut desktops = self
+			.sessions
+			.values()
+			.filter(|s| s.tool == Tool::Claude && !s.hidden)
+			.filter(|s| s.name.as_deref().is_some_and(|n| n.trim().eq_ignore_ascii_case(name)))
+			.filter_map(|s| s.desktop.as_deref());
+		let first = desktops.next()?;
+		desktops.all(|d| d == first).then(|| first.to_owned())
+	}
+
+	/// Put Claude sessions on the desktop of their window. Returns whether
+	/// any moved.
+	fn place_by_windows(&mut self, windows: &[WindowInfo]) -> bool {
+		let mut any = false;
+		// A window titled with the session name says where the session is,
+		// unless windows with that title sit on different desktops: then it
+		// is not known which is whose, and what is recorded stays.
+		for s in self.sessions.values_mut().filter(|s| s.tool == Tool::Claude) {
+			let Some(name) = s.name.as_deref() else { continue };
+			let mut desktops = windows.iter().filter(|w| w.title == name).filter_map(|w| w.desktop.as_ref());
+			let Some(first) = desktops.next() else { continue };
+			if desktops.all(|d| d == first) && s.desktop.as_ref() != Some(first) {
+				s.desktop = Some(first.clone());
+				any = true;
+			}
+		}
+		// Some windows are titled just "Claude" instead of their session's
+		// name. With exactly one of those and exactly one session that has no
+		// window of its own, they go together.
+		let untitled: Vec<&WindowInfo> = windows.iter().filter(|w| w.title == APP_TITLE && w.desktop.is_some()).collect();
+		let has_window = |s: &Session| s.name.as_deref().is_some_and(|n| windows.iter().any(|w| w.title == n));
+		let mut unplaced = self.sessions.values_mut().filter(|s| s.tool == Tool::Claude && s.visible() && !has_window(s));
+		if let ([window], Some(s), None) = (untitled.as_slice(), unplaced.next(), unplaced.next())
+			&& s.desktop != window.desktop
+		{
+			log::info!("Claude {}: placed by the window titled {APP_TITLE:?}", s.label());
+			s.desktop = window.desktop.clone();
+			any = true;
+		}
+		any
+	}
+
+	/// Forget sessions and session ends that are too old. Returns whether a
+	/// session went.
+	fn prune(&mut self, now: u64) -> bool {
+		let before = self.sessions.len();
+		self.sessions.retain(|_, s| now.saturating_sub(s.last.max(s.since)) < FORGET_MS);
+		self.ended.retain(|_, ended| now.saturating_sub(*ended) < ENDED_KEEP_MS);
+		self.sessions.len() != before
+	}
+}
+
+// ---------------------------------------------------------------- shared state
+
+static TRACKER: LazyLock<Mutex<Tracker>> = LazyLock::new(|| Mutex::new(Tracker { sessions: load(), ended: HashMap::new() }));
+static CHANGED: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
+/// Whether Codex sends approval requests to its automatic reviewer.
+static CODEX_AUTO_REVIEW: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(codex_auto_review()));
+
+pub fn subscribe() -> watch::Receiver<u64> {
+	CHANGED.subscribe()
+}
+
+fn changed() {
+	CHANGED.send_modify(|v| *v = v.wrapping_add(1));
+	save();
+}
+
+pub fn now_ms() -> u64 {
+	SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// Sessions to show on the deck.
+pub fn visible() -> Vec<View> {
+	TRACKER.lock().unwrap().views(now_ms(), CODEX_AUTO_REVIEW.load(Ordering::Relaxed))
+}
+
 fn handle(tool: Tool, mut event: Event, foreground: Option<WindowInfo>) {
 	if event.ts == 0 {
 		event.ts = now_ms();
 	}
-	let key = format!("{tool:?}:{}", event.session_id);
-	let mut sessions = SESSIONS.lock().unwrap();
-
-	if event.hook_event_name == "SessionEnd" {
-		if let Some(s) = sessions.remove(&key) {
-			log::info!("{tool:?} {}: ended", s.label());
-		}
-		drop(sessions);
+	let auto_review = CODEX_AUTO_REVIEW.load(Ordering::Relaxed);
+	let any = TRACKER.lock().unwrap().apply(tool, event, foreground, auto_review);
+	if any {
 		changed();
-		return;
 	}
-	// Codex reports its subagents (e.g. the approval reviewer) with agent_*.
-	// Claude reports subagent work inside the parent session, which is fine.
-	if tool == Tool::Codex && (event.agent_id.is_some() || event.agent_type.is_some()) {
-		return;
-	}
-
-	let session = sessions.entry(key).or_insert_with(|| Session {
-		tool,
-		id: event.session_id.clone(),
-		name: None,
-		cwd: None,
-		transcript: None,
-		state: State::Idle,
-		since: event.ts,
-		last: 0,
-		desktop: None,
-		prompted: false,
-		hidden: false,
-		name_checked: 0,
-	});
-	if let Some(cwd) = event.cwd.take() {
-		session.cwd = Some(cwd);
-	}
-	if let Some(path) = event.transcript_path.take() {
-		session.transcript = Some(path);
-	}
-	if let Some(title) = event.session_title.take().filter(|t| !t.trim().is_empty()) {
-		session.name = Some(title);
-	}
-	if event.hook_event_name == "UserPromptSubmit" {
-		session.prompted = true;
-		session.name_checked = 0; // a first prompt is when names usually appear
-		if let Some(fg) = foreground.filter(|w| typed_from(tool, &w.process))
-			&& fg.desktop.is_some()
-		{
-			session.desktop = fg.desktop;
-		}
-	}
-	if event.ts >= session.last {
-		session.last = event.ts;
-		if let Some(state) = next_state(&event)
-			&& state != session.state
-		{
-			log::info!("{tool:?} {}: {:?} -> {state:?} ({})", session.label(), session.state, event.hook_event_name);
-			session.state = state;
-			session.since = event.ts;
-		}
-	}
-	drop(sessions);
-	changed();
 }
 
 // ---------------------------------------------------------------- listener
@@ -335,19 +639,36 @@ async fn connection(mut socket: TcpStream) -> std::io::Result<()> {
 
 // ---------------------------------------------------------------- upkeep
 
-/// Last `customTitle` in the tail of a Claude Code transcript.
-fn claude_title(path: &str) -> Option<String> {
-	const TAIL: u64 = 1 << 20;
-	let mut file = std::fs::File::open(path).ok()?;
-	let len = file.metadata().ok()?.len();
-	file.seek(SeekFrom::Start(len.saturating_sub(TAIL))).ok()?;
-	let mut buf = Vec::new();
-	file.read_to_end(&mut buf).ok()?;
-	let text = String::from_utf8_lossy(&buf);
-	let at = text.rfind("{\"type\":\"custom-title\"")?;
-	let line = text[at..].lines().next()?;
-	let value: serde_json::Value = serde_json::from_str(line).ok()?;
-	value.get("customTitle")?.as_str().map(str::to_owned).filter(|t| !t.trim().is_empty())
+/// Newest `customTitle` in a Claude Code transcript from byte `offset` on, and
+/// the offset to carry on from next time (after the last complete line). The
+/// title can be anywhere in the file, so the first call reads all of it and
+/// later calls only what was added.
+fn claude_title(path: &str, mut offset: u64) -> (Option<String>, u64) {
+	let Ok(file) = std::fs::File::open(path) else { return (None, offset) };
+	if file.metadata().map(|m| m.len()).unwrap_or(0) < offset {
+		offset = 0; // replaced by a shorter file
+	}
+	let mut reader = BufReader::with_capacity(1 << 16, file);
+	if reader.seek(SeekFrom::Start(offset)).is_err() {
+		return (None, offset);
+	}
+	let mut title = None;
+	let mut line = Vec::new();
+	loop {
+		line.clear();
+		match reader.read_until(b'\n', &mut line) {
+			Ok(n) if n > 0 && line.ends_with(b"\n") => offset += n as u64,
+			_ => break, // end of file, or a line still being written
+		}
+		if find(&line, b"\"custom-title\"").is_some()
+			&& let Ok(value) = serde_json::from_slice::<serde_json::Value>(&line)
+			&& value.get("type").and_then(|t| t.as_str()) == Some("custom-title")
+			&& let Some(t) = value.get("customTitle").and_then(|t| t.as_str()).filter(|t| !t.trim().is_empty())
+		{
+			title = Some(t.to_owned());
+		}
+	}
+	(title, offset)
 }
 
 fn codex_home() -> PathBuf {
@@ -371,28 +692,50 @@ fn codex_names() -> HashMap<String, String> {
 	names
 }
 
+/// Whether a Codex `config.toml` sends approval requests to the automatic
+/// reviewer: top-level `approvals_reviewer = "auto_review"` (or its old name
+/// "guardian_subagent"). The desktop app can also set this per thread, which
+/// is not visible here.
+fn auto_review_in(config: &str) -> bool {
+	for line in config.lines().map(str::trim) {
+		if line.starts_with('[') {
+			break; // top-level keys end at the first table
+		}
+		if let Some((name, value)) = line.split_once('=')
+			&& name.trim() == "approvals_reviewer"
+		{
+			let value = value.split('#').next().unwrap_or("").trim().trim_matches(['"', '\'']);
+			return matches!(value, "auto_review" | "guardian_subagent");
+		}
+	}
+	false
+}
+
+fn codex_auto_review() -> bool {
+	std::fs::read_to_string(codex_home().join("config.toml")).is_ok_and(|text| auto_review_in(&text))
+}
+
 /// Periodic work: refresh names, place Claude sessions by their window, drop
 /// old sessions. Blocking file and window calls run off the async threads.
 pub async fn maintain() {
 	let now = now_ms();
 	let (claude_due, codex_due, removed) = {
-		let mut sessions = SESSIONS.lock().unwrap();
-		let before = sessions.len();
-		sessions.retain(|_, s| now.saturating_sub(s.last.max(s.since)) < FORGET_MS);
-		let removed = sessions.len() != before;
+		let mut tracker = TRACKER.lock().unwrap();
+		let removed = tracker.prune(now);
 		let due = |s: &Session| now.saturating_sub(s.name_checked) >= NAME_REFRESH_MS;
-		let claude: Vec<(String, String)> = sessions
+		let claude: Vec<(String, String, u64)> = tracker
+			.sessions
 			.iter()
 			.filter(|(_, s)| s.tool == Tool::Claude && due(s))
-			.filter_map(|(k, s)| Some((k.clone(), s.transcript.clone()?)))
+			.filter_map(|(k, s)| Some((k.clone(), s.transcript.clone()?, s.title_offset)))
 			.collect();
-		let codex = sessions.values().any(|s| s.tool == Tool::Codex && due(s));
+		let codex = tracker.sessions.values().any(|s| s.tool == Tool::Codex && due(s));
 		(claude, codex, removed)
 	};
 
 	let found = tokio::task::spawn_blocking(move || {
-		let titles: Vec<(String, Option<String>)> = claude_due.into_iter().map(|(k, p)| (k, claude_title(&p))).collect();
-		let codex = if codex_due { Some(codex_names()) } else { None };
+		let titles: Vec<_> = claude_due.into_iter().map(|(key, path, offset)| (key, claude_title(&path, offset))).collect();
+		let codex = codex_due.then(|| (codex_names(), codex_auto_review()));
 		let windows = winutil::app_windows(&["claude"]);
 		(titles, codex, windows)
 	})
@@ -401,18 +744,23 @@ pub async fn maintain() {
 
 	let mut any = removed;
 	{
-		let mut sessions = SESSIONS.lock().unwrap();
-		for (key, title) in titles {
-			if let Some(s) = sessions.get_mut(&key) {
+		let mut tracker = TRACKER.lock().unwrap();
+		for (key, (title, offset)) in titles {
+			if let Some(s) = tracker.sessions.get_mut(&key) {
 				s.name_checked = now;
+				s.title_offset = offset;
 				if title.is_some() && title != s.name {
 					s.name = title;
 					any = true;
 				}
 			}
 		}
-		if let Some(names) = codex {
-			for s in sessions.values_mut().filter(|s| s.tool == Tool::Codex) {
+		if let Some((names, auto_review)) = codex {
+			if CODEX_AUTO_REVIEW.swap(auto_review, Ordering::Relaxed) != auto_review {
+				log::info!("Codex automatic review: {auto_review}");
+				any = true;
+			}
+			for s in tracker.sessions.values_mut().filter(|s| s.tool == Tool::Codex) {
 				s.name_checked = now;
 				if let Some(name) = names.get(&s.id) {
 					let hidden = name == CODEX_REVIEWER;
@@ -424,16 +772,7 @@ pub async fn maintain() {
 				}
 			}
 		}
-		// A Claude window titled with the session name says exactly where it is.
-		for s in sessions.values_mut().filter(|s| s.tool == Tool::Claude) {
-			let Some(name) = s.name.as_deref() else { continue };
-			if let Some(w) = windows.iter().find(|w| w.title == name && w.desktop.is_some())
-				&& s.desktop != w.desktop
-			{
-				s.desktop = w.desktop.clone();
-				any = true;
-			}
-		}
+		any |= tracker.place_by_windows(&windows);
 	}
 	if any {
 		changed();
@@ -448,20 +787,273 @@ fn store_path() -> Option<PathBuf> {
 
 fn load() -> HashMap<String, Session> {
 	let now = now_ms();
-	store_path()
+	let mut sessions: HashMap<String, Session> = store_path()
 		.and_then(|p| std::fs::read(p).ok())
-		.and_then(|b| serde_json::from_slice::<HashMap<String, Session>>(&b).ok())
-		.map(|m| m.into_iter().filter(|(_, s)| now.saturating_sub(s.last.max(s.since)) < FORGET_MS).collect())
-		.unwrap_or_default()
+		.and_then(|b| serde_json::from_slice(&b).ok())
+		.unwrap_or_default();
+	sessions.retain(|_, s| now.saturating_sub(s.last.max(s.since)) < FORGET_MS);
+	for s in sessions.values_mut() {
+		// Files from before approvals were tracked per call kept them here.
+		if matches!(s.state, State::Permission | State::Reviewing) {
+			s.state = State::Working;
+		}
+	}
+	sessions
 }
 
 fn save() {
 	let Some(path) = store_path() else { return };
-	let json = {
-		let sessions = SESSIONS.lock().unwrap();
-		serde_json::to_vec_pretty(&*sessions)
-	};
+	let json = serde_json::to_vec_pretty(&TRACKER.lock().unwrap().sessions);
 	if let Ok(json) = json {
 		let _ = std::fs::write(path, json);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	const S: &str = "s";
+
+	fn ev(name: &str, ts: u64) -> Event {
+		Event { hook_event_name: name.to_owned(), session_id: S.to_owned(), ts, ..Default::default() }
+	}
+
+	/// PreToolUse / PostToolUse of call `id` whose input hashes to `call`.
+	fn tool(name: &str, ts: u64, id: &str, call: u64) -> Event {
+		Event { tool_use_id: Some(id.to_owned()), call: Some(call), ..ev(name, ts) }
+	}
+
+	fn ask(ts: u64, call: u64) -> Event {
+		Event { call: Some(call), ..ev("PermissionRequest", ts) }
+	}
+
+	fn feed(tracker: &mut Tracker, tool: Tool, auto_review: bool, events: Vec<Event>) {
+		for event in events {
+			tracker.apply(tool, event, None, auto_review);
+		}
+	}
+
+	fn state(tracker: &Tracker, tool: Tool, now: u64, auto_review: bool) -> State {
+		tracker.sessions[&key(tool, S)].shown(now, auto_review).0
+	}
+
+	fn window(title: &str, desktop: &str) -> WindowInfo {
+		WindowInfo { process: "claude".to_owned(), title: title.to_owned(), desktop: Some(desktop.to_owned()) }
+	}
+
+	fn named(tool: Tool, id: &str, name: &str, desktop: Option<&str>) -> Session {
+		Session { name: Some(name.to_owned()), desktop: desktop.map(str::to_owned), ..Session::new(tool, id, 0) }
+	}
+
+	fn tracker(list: Vec<Session>) -> Tracker {
+		Tracker { sessions: list.into_iter().map(|s| (key(s.tool, &s.id), s)).collect(), ended: HashMap::new() }
+	}
+
+	// ---- approvals
+
+	#[test]
+	fn another_calls_finish_does_not_clear_a_pending_approval() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![
+			tool("PreToolUse", 10, "a", 1),
+			tool("PreToolUse", 11, "b", 2),
+			ask(12, 1),
+			tool("PostToolUse", 20, "b", 2),
+		]);
+		assert_eq!(state(&t, Tool::Claude, 21, false), State::Permission);
+		feed(&mut t, Tool::Claude, false, vec![tool("PostToolUse", 30, "a", 1)]);
+		assert_eq!(state(&t, Tool::Claude, 31, false), State::Working);
+	}
+
+	#[test]
+	fn a_request_arriving_after_its_call_finished_is_not_pending() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 10, "a", 1), tool("PostToolUse", 20, "a", 1), ask(12, 1)]);
+		assert_eq!(state(&t, Tool::Claude, 21, false), State::Working);
+		// the same command again later does ask
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 30, "b", 1), ask(31, 1)]);
+		assert_eq!(state(&t, Tool::Claude, 32, false), State::Permission);
+	}
+
+	#[test]
+	fn the_end_of_the_turn_or_batch_settles_requests() {
+		for end in ["Stop", "PostToolBatch", "UserPromptSubmit", "Interrupt"] {
+			let mut t = Tracker::default();
+			feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 10, "a", 1), ask(11, 1), ev(end, 20)]);
+			assert!(!state(&t, Tool::Claude, 21, false).needs_user(), "{end}");
+		}
+		// but not one that ended before the request was made
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 10, "a", 1), ask(11, 1), ev("Stop", 5)]);
+		assert_eq!(state(&t, Tool::Claude, 21, false), State::Permission);
+	}
+
+	#[test]
+	fn a_request_matching_no_call_goes_when_nothing_is_running() {
+		let mut t = Tracker::default();
+		// the request's hash differs from its call's
+		feed(&mut t, Tool::Codex, false, vec![tool("PreToolUse", 10, "a", 1), tool("PreToolUse", 10, "b", 2), ask(11, 9)]);
+		feed(&mut t, Tool::Codex, false, vec![tool("PostToolUse", 20, "b", 2)]);
+		assert_eq!(state(&t, Tool::Codex, 21, false), State::Permission);
+		feed(&mut t, Tool::Codex, false, vec![tool("PostToolUse", 30, "a", 1)]);
+		assert_eq!(state(&t, Tool::Codex, 31, false), State::Working);
+	}
+
+	#[test]
+	fn claude_reminder_counts_once() {
+		let mut t = Tracker::default();
+		let reminder = |ts| Event { notification_type: Some("permission_prompt".to_owned()), ..ev("Notification", ts) };
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 10, "a", 1), ask(11, 1), reminder(17)]);
+		feed(&mut t, Tool::Claude, false, vec![tool("PostToolUse", 20, "a", 1)]);
+		assert_eq!(state(&t, Tool::Claude, 21, false), State::Working);
+		// and stands in for a request that was never received
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 30, "b", 2), reminder(37)]);
+		assert_eq!(state(&t, Tool::Claude, 38, false), State::Permission);
+	}
+
+	#[test]
+	fn codex_automatic_review_is_not_waiting_for_the_user() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Codex, true, vec![tool("PreToolUse", 1_000, "a", 1), ask(1_001, 1)]);
+		assert_eq!(state(&t, Tool::Codex, 4_000, true), State::Reviewing);
+		assert!(!State::Reviewing.needs_user());
+		// far longer than a review takes: maybe the user is being asked after all
+		assert_eq!(state(&t, Tool::Codex, 1_001 + REVIEW_OVERDUE_MS, true), State::Permission);
+		// without automatic review it is the user's from the start
+		assert_eq!(state(&t, Tool::Codex, 4_000, false), State::Permission);
+	}
+
+	#[test]
+	fn codex_rejected_request_goes_when_the_model_moves_on() {
+		// A rejection sends no event; the next call shows the model got its answer.
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Codex, true, vec![tool("PreToolUse", 1_000, "a", 1), ask(1_001, 1), tool("PreToolUse", 9_000, "b", 2)]);
+		assert_eq!(state(&t, Tool::Codex, 9_001, true), State::Working);
+	}
+
+	// ---- session end
+
+	#[test]
+	fn late_events_do_not_bring_an_ended_session_back() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 10), ev("SessionEnd", 30), tool("PostToolUse", 20, "a", 1)]);
+		assert!(t.sessions.is_empty());
+		// a later event is the session being resumed
+		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 40)]);
+		assert_eq!(state(&t, Tool::Claude, 41, false), State::Working);
+	}
+
+	#[test]
+	fn an_old_session_end_does_not_remove_a_resumed_session() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 10), ev("UserPromptSubmit", 40), ev("SessionEnd", 30)]);
+		assert_eq!(state(&t, Tool::Claude, 41, false), State::Working);
+	}
+
+	#[test]
+	fn codex_subagent_events_are_ignored() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Codex, false, vec![ev("UserPromptSubmit", 10)]);
+		let sub = Event { agent_type: Some("worker".to_owned()), ..ev("SessionEnd", 20) };
+		assert!(!t.apply(Tool::Codex, sub, None, false));
+		assert_eq!(t.sessions.len(), 1);
+	}
+
+	// ---- desktops
+
+	#[test]
+	fn a_window_with_the_sessions_name_places_it() {
+		let mut t = tracker(vec![named(Tool::Claude, "a", "GMK01", Some("D5"))]);
+		assert!(t.place_by_windows(&[window("GMK01", "D3"), window("Other", "D1")]));
+		assert_eq!(t.sessions["Claude:a"].desktop.as_deref(), Some("D3"));
+	}
+
+	#[test]
+	fn same_named_windows_on_different_desktops_place_nothing() {
+		let mut t = tracker(vec![named(Tool::Claude, "a", "GMK01", Some("D5")), named(Tool::Claude, "b", "GMK01", None)]);
+		assert!(!t.place_by_windows(&[window("GMK01", "D3"), window("GMK01", "D5")]));
+		assert_eq!(t.sessions["Claude:a"].desktop.as_deref(), Some("D5"));
+		assert_eq!(t.sessions["Claude:b"].desktop, None);
+	}
+
+	#[test]
+	fn the_one_untitled_window_goes_with_the_one_windowless_session() {
+		let mut t = tracker(vec![named(Tool::Claude, "a", "GMK01", Some("D3")), named(Tool::Claude, "b", "Deck", Some("D5"))]);
+		assert!(t.place_by_windows(&[window("GMK01", "D3"), window(APP_TITLE, "D1")]));
+		assert_eq!(t.sessions["Claude:b"].desktop.as_deref(), Some("D1"));
+		// two windowless sessions: no telling which the window is
+		let mut t = tracker(vec![named(Tool::Claude, "a", "X", None), named(Tool::Claude, "b", "Y", None)]);
+		assert!(!t.place_by_windows(&[window(APP_TITLE, "D1")]));
+	}
+
+	#[test]
+	fn a_prompt_records_the_desktop_only_when_typed_there_now() {
+		let prompt = |ts| ev("UserPromptSubmit", ts);
+		let mut t = tracker(vec![named(Tool::Claude, "other", "Other", None)]);
+		t.apply(Tool::Claude, prompt(10), Some(window("Claude", "D1")), false);
+		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop.as_deref(), Some("D1"));
+		// delivered from the queue while the session is busy
+		t.apply(Tool::Claude, prompt(20), Some(window("Claude", "D2")), false);
+		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop.as_deref(), Some("D1"));
+		// another session's window is in front
+		t.apply(Tool::Claude, ev("Stop", 30), None, false);
+		t.apply(Tool::Claude, prompt(40), Some(window("Other", "D3")), false);
+		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop.as_deref(), Some("D1"));
+	}
+
+	#[test]
+	fn codex_borrows_the_same_named_claude_desktop() {
+		let codex = named(Tool::Codex, "x", "GMK01", None);
+		let t = tracker(vec![
+			codex.clone(),
+			named(Tool::Claude, "a", "gmk01 ", Some("D3")),
+			named(Tool::Claude, "b", "GMK02", Some("D4")),
+		]);
+		assert_eq!(t.namesake_desktop(&codex).as_deref(), Some("D3"));
+	}
+
+	#[test]
+	fn no_desktop_when_namesakes_disagree_or_are_missing() {
+		let codex = named(Tool::Codex, "x", "GMK01", None);
+		let split = tracker(vec![named(Tool::Claude, "a", "GMK01", Some("D3")), named(Tool::Claude, "b", "GMK01", Some("D5"))]);
+		assert_eq!(split.namesake_desktop(&codex), None);
+		let only_codex = tracker(vec![named(Tool::Codex, "y", "GMK01", Some("D3"))]);
+		assert_eq!(only_codex.namesake_desktop(&codex), None);
+	}
+
+	// ---- files
+
+	#[test]
+	fn a_title_far_from_the_end_of_the_transcript_is_found() {
+		let path = std::env::temp_dir().join(format!("vdesk-title-test-{}.jsonl", std::process::id()));
+		let filler = format!("{{\"type\":\"user\",\"text\":\"{}\"}}\n", "x".repeat(64 * 1024));
+		let mut text = String::from("{\"type\":\"custom-title\",\"customTitle\":\"First\",\"sessionId\":\"s\"}\n");
+		for _ in 0..40 {
+			text.push_str(&filler); // well over 1 MiB after the title
+		}
+		std::fs::write(&path, &text).unwrap();
+		let path_str = path.to_str().unwrap();
+
+		let (title, offset) = claude_title(path_str, 0);
+		assert_eq!(title.as_deref(), Some("First"));
+		assert_eq!(offset, text.len() as u64);
+
+		// later calls read only what was added; a half-written line waits
+		let more = "{\"type\":\"custom-title\",\"customTitle\":\"Second\"}\n{\"type\":\"custom-title\",\"customTitle\":\"Half";
+		std::fs::write(&path, format!("{text}{more}")).unwrap();
+		let (title, next) = claude_title(path_str, offset);
+		assert_eq!(title.as_deref(), Some("Second"));
+		assert_eq!(next, offset + more.find('\n').unwrap() as u64 + 1);
+		assert_eq!(claude_title(path_str, next), (None, next));
+		let _ = std::fs::remove_file(&path);
+	}
+
+	#[test]
+	fn codex_config_says_who_reviews() {
+		assert!(auto_review_in("model = \"x\"\napprovals_reviewer = \"guardian_subagent\"\n[profiles.a]\n"));
+		assert!(auto_review_in("approvals_reviewer = 'auto_review' # mine"));
+		assert!(!auto_review_in("approvals_reviewer = \"user\""));
+		assert!(!auto_review_in("approval_policy = \"on-request\"\n[profiles.a]\napprovals_reviewer = \"auto_review\""));
 	}
 }

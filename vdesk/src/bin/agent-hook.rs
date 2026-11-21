@@ -5,9 +5,10 @@
 //!   agent-hook.exe codex    (Codex hook, event JSON on stdin)
 //!
 //! It keeps only the few fields the plugin needs, adds the time of the hook,
-//! and posts it to 127.0.0.1. It always exits 0 and prints nothing, so it can
-//! never block, slow down or change what the agent does, even when OpenDeck is
-//! not running.
+//! and posts it to 127.0.0.1. Tool input is not forwarded, only a hash of it
+//! (`call`), which lets the plugin tell which tool call an approval request
+//! belongs to. It always exits 0 and prints nothing, so it can never block,
+//! slow down or change what the agent does, even when OpenDeck is not running.
 #![windows_subsystem = "windows"]
 
 use std::io::{Read, Write};
@@ -26,7 +27,29 @@ const KEEP: &[&str] = &[
 	"session_title",
 	"agent_id",
 	"agent_type",
+	"tool_use_id",
 ];
+
+/// FNV-1a: the same input must hash the same in every hook process.
+fn fnv1a(hash: u64, bytes: &[u8]) -> u64 {
+	bytes.iter().fold(hash, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3))
+}
+
+/// A hash that is the same for the PreToolUse, PermissionRequest and
+/// PostToolUse of one tool call. The command alone when there is one: Codex
+/// adds fields to the approval request's input that the others do not have.
+fn call_hash(event: &serde_json::Map<String, serde_json::Value>) -> Option<u64> {
+	let input = event.get("tool_input").filter(|v| !v.is_null())?;
+	let seed = 0xcbf2_9ce4_8422_2325;
+	let hash = match input.get("command").filter(|v| !v.is_null()) {
+		Some(command) => fnv1a(seed, &serde_json::to_vec(command).ok()?),
+		None => {
+			let name = event.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
+			fnv1a(fnv1a(seed, name.as_bytes()), &serde_json::to_vec(input).ok()?)
+		}
+	};
+	Some(hash.max(1)) // 0 means "unknown" to the plugin
+}
 
 fn main() {
 	// Never hang around, whatever happens with stdin or the socket.
@@ -52,6 +75,9 @@ fn main() {
 	}
 	let ts = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
 	out.insert("ts".to_owned(), ts.into());
+	if let Some(call) = call_hash(&event) {
+		out.insert("call".to_owned(), call.into());
+	}
 	let Ok(body) = serde_json::to_vec(&out) else { return };
 
 	let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
@@ -65,5 +91,33 @@ fn main() {
 	if socket.write_all(head.as_bytes()).and_then(|_| socket.write_all(&body)).is_ok() {
 		let mut reply = [0u8; 64];
 		let _ = socket.read(&mut reply);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::call_hash;
+
+	fn hash(json: &str) -> Option<u64> {
+		let serde_json::Value::Object(event) = serde_json::from_str(json).unwrap() else { panic!("not an object") };
+		call_hash(&event)
+	}
+
+	#[test]
+	fn one_call_hashes_the_same_in_every_event() {
+		let pre = hash(r#"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_use_id":"t1","tool_input":{"command":"gh api x"}}"#);
+		// Codex adds a description to the approval request, and key order may differ
+		let ask = hash(r#"{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"description":"why","command":"gh api x"}}"#);
+		assert!(pre.is_some());
+		assert_eq!(pre, ask);
+		assert_ne!(pre, hash(r#"{"tool_name":"Bash","tool_input":{"command":"gh api y"}}"#));
+	}
+
+	#[test]
+	fn tools_without_a_command_hash_name_and_input() {
+		let edit = hash(r#"{"tool_name":"Edit","tool_input":{"file_path":"a","old_string":"x","new_string":"y"}}"#);
+		assert_eq!(edit, hash(r#"{"tool_name":"Edit","tool_input":{"old_string":"x","new_string":"y","file_path":"a"}}"#));
+		assert_ne!(edit, hash(r#"{"tool_name":"Write","tool_input":{"file_path":"a","old_string":"x","new_string":"y"}}"#));
+		assert_eq!(hash(r#"{"hook_event_name":"Stop"}"#), None);
 	}
 }

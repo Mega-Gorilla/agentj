@@ -3,7 +3,10 @@
 # OpenDeck's install folder.
 #
 #   Default:  [1][2][3][4][5] / [6][7][8][9][10] / [◀][n/N][▶][ ][→AI]
-#   AI:       13 AI session slots, [summary], [→Default]
+#   AI:       [Claude x5] / [Codex x5] / [→Default][ ][◀][summary][▶]
+#             (AI session keys carry settings.tool; the k-th key of each row is
+#             column k, one column per desktop with sessions; ◀ ▶ page through
+#             the columns when they do not fit)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $plugin = 'local.virtualdesktop.sdPlugin'
@@ -14,12 +17,14 @@ $defs = @{
 	info   = @{ name = 'Desktop Info'; multi = $false; tip = '現在のデスクトップ番号・総数・名前。押すと再読み込み' }
 	prev   = @{ name = 'Previous Desktop'; multi = $true; tip = '左隣のデスクトップへ' }
 	next   = @{ name = 'Next Desktop'; multi = $true; tip = '右隣のデスクトップへ' }
-	agent  = @{ name = 'AI Session'; multi = $false; tip = 'Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ' }
+	agent  = @{ name = 'AI Session'; multi = $false; tip = 'Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ' }
 	agents = @{ name = 'AI Summary'; multi = $false; tip = '要対応・返答済・作業中の数。押すと一番待たせているセッションのデスクトップへ' }
+	agentprev = @{ name = 'AI Page Previous'; multi = $false; icon = 'prev'; tip = 'AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙' }
+	agentnext = @{ name = 'AI Page Next'; multi = $false; icon = 'next'; tip = 'AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙' }
 }
 
-function New-OwnKey([string]$kind, [int]$pos) {
-	$d = $defs[$kind]; $i = & $img $kind
+function New-OwnKey([string]$kind, [int]$pos, $settings = [ordered]@{}) {
+	$d = $defs[$kind]; $i = & $img ($d.icon ?? $kind)
 	[ordered]@{
 		action = [ordered]@{
 			name = $d.name; uuid = "local.virtualdesktop.$kind"; plugin = $plugin; tooltip = $d.tip; icon = $i
@@ -30,7 +35,7 @@ function New-OwnKey([string]$kind, [int]$pos) {
 		context = "Keypad.$pos.0"
 		states = @([ordered]@{ image = $i; show = $false })
 		current_state = 0
-		settings = [ordered]@{}
+		settings = $settings
 		children = $null
 	}
 }
@@ -67,7 +72,10 @@ $default += , (New-SwitchKey 14 'AI' 'to-ai')
 Save-Profile 'Default' $default
 
 $ai = @()
-for ($i = 0; $i -lt 13; $i++) { $ai += , (New-OwnKey 'agent' $i) }
-$ai += , (New-OwnKey 'agents' 13)
-$ai += , (New-SwitchKey 14 'Default' 'to-desk')
+for ($i = 0; $i -lt 10; $i++) {
+	$ai += , (New-OwnKey 'agent' $i ([ordered]@{ tool = $(if ($i -lt 5) { 'claude' } else { 'codex' }) }))
+}
+$ai += , (New-SwitchKey 10 'Default' 'to-desk')
+$ai += , $null
+$ai += , (New-OwnKey 'agentprev' 12); $ai += , (New-OwnKey 'agents' 13); $ai += , (New-OwnKey 'agentnext' 14)
 Save-Profile 'AI' $ai

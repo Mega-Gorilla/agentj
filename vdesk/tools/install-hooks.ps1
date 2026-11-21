@@ -6,7 +6,9 @@
 #
 # Every hook runs hook-bin\agent-hook.exe in the background ("async"), which
 # exits 0 at once and prints nothing, so the agents never wait on it.
-# The previous file is kept as <file>.bak-<time>.
+# Only handlers that run agent-hook.exe are added or removed: other handlers,
+# also ones in the same hook group, stay. A file is rewritten only when its
+# content changes, and the previous one is then kept as <file>.bak-<time>.
 param([switch]$Uninstall)
 
 $ErrorActionPreference = 'Stop'
@@ -18,7 +20,7 @@ $targets = @(
 	@{
 		file   = Join-Path $env:USERPROFILE '.claude\settings.json'
 		arg    = 'claude'
-		events = 'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure',
+		events = 'SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PostToolBatch',
 		'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SessionEnd'
 		sync   = @()
 	},
@@ -31,19 +33,24 @@ $targets = @(
 )
 
 foreach ($t in $targets) {
-	$data = if (Test-Path -LiteralPath $t.file) {
-		Copy-Item -LiteralPath $t.file -Destination "$($t.file).bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
-		Get-Content -LiteralPath $t.file -Raw | ConvertFrom-Json -AsHashtable
-	} else {
-		[ordered]@{}
-	}
+	$exists = Test-Path -LiteralPath $t.file
+	if ($Uninstall -and -not $exists) { Write-Output "nothing to remove: $($t.file)"; continue }
+	$before = if ($exists) { Get-Content -LiteralPath $t.file -Raw } else { '' }
+	$data = if ($before.Trim()) { $before | ConvertFrom-Json -AsHashtable } else { [ordered]@{} }
 	if (-not $data.Contains('hooks')) { $data['hooks'] = [ordered]@{} }
 	$hooks = $data['hooks']
 
-	# drop our earlier entries, keep everything else
+	# Drop our earlier handlers. A group that also holds someone else's
+	# handler keeps that handler; a group left empty goes.
 	foreach ($event in @($hooks.Keys)) {
-		$kept = @($hooks[$event] | Where-Object { -not ($_.hooks | Where-Object { "$($_.command)" -like "*$marker*" }) })
-		if ($kept.Count -gt 0) { $hooks[$event] = $kept } else { $hooks.Remove($event) }
+		$kept = [System.Collections.Generic.List[object]]::new()
+		foreach ($group in @($hooks[$event])) {
+			$handlers = @($group.hooks)
+			$others = @($handlers | Where-Object { "$($_.command)" -notlike "*$marker*" })
+			if ($others.Count -eq $handlers.Count) { $kept.Add($group) }
+			elseif ($others.Count -gt 0) { $group['hooks'] = $others; $kept.Add($group) }
+		}
+		if ($kept.Count -gt 0) { $hooks[$event] = $kept.ToArray() } else { $hooks.Remove($event) }
 	}
 
 	if (-not $Uninstall) {
@@ -57,8 +64,10 @@ foreach ($t in $targets) {
 		}
 	}
 
-	New-Item -ItemType Directory -Force (Split-Path $t.file) | Out-Null
 	$json = $data | ConvertTo-Json -Depth 20
+	if ($json -eq $before) { Write-Output "unchanged: $($t.file)"; continue }
+	if ($exists) { Copy-Item -LiteralPath $t.file -Destination "$($t.file).bak-$(Get-Date -Format yyyyMMdd-HHmmss)" }
+	New-Item -ItemType Directory -Force (Split-Path $t.file) | Out-Null
 	[IO.File]::WriteAllText($t.file, $json, (New-Object Text.UTF8Encoding($false)))
 	Write-Output ("{0}: {1} ({2})" -f $(if ($Uninstall) { 'removed' } else { 'installed' }), $t.file, ($t.events -join ', '))
 }

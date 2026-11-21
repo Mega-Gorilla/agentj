@@ -50,7 +50,7 @@
 		{
 			"UUID": "local.virtualdesktop.agent",
 			"Name": "AI Session",
-			"Tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+			"Tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
 			"Icon": "imgs/agent",
 			"States": [{ "Image": "imgs/agent", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -62,6 +62,24 @@
 			"Tooltip": "要対応・返答済・作業中の数。押すと一番待たせているセッションのデスクトップへ",
 			"Icon": "imgs/agents",
 			"States": [{ "Image": "imgs/agents", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": false
+		},
+		{
+			"UUID": "local.virtualdesktop.agentprev",
+			"Name": "AI Page Previous",
+			"Tooltip": "AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙",
+			"Icon": "imgs/prev",
+			"States": [{ "Image": "imgs/prev", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": false
+		},
+		{
+			"UUID": "local.virtualdesktop.agentnext",
+			"Name": "AI Page Next",
+			"Tooltip": "AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙",
+			"Icon": "imgs/next",
+			"States": [{ "Image": "imgs/next", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
 			"SupportedInMultiActions": false
 		}

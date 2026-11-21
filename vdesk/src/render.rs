@@ -136,6 +136,7 @@ pub fn agent(card: &AgentCard) -> String {
 			State::Error => ("#991B1B", "エラー", "#FFFFFF"),
 			State::Done => ("#1D4ED8", "返答済み", "#DBEAFE"),
 			State::Working => ("#14532D", "作業中", "#4ADE80"),
+			State::Reviewing => ("#134E4A", "自動審査中", "#5EEAD4"),
 			State::Idle => ("#1E293B", "待機中", "#94A3B8"),
 		}
 	};
@@ -143,7 +144,7 @@ pub fn agent(card: &AgentCard) -> String {
 		Tool::Claude => ("Claude", "#F4A98A"),
 		Tool::Codex => ("Codex", "#9FE7C9"),
 	};
-	if !card.stale && !matches!(card.state, State::Working | State::Idle) {
+	if !card.stale && !matches!(card.state, State::Working | State::Reviewing | State::Idle) {
 		// The tool colours do not read well on the strong state colours.
 		tool_colour = "#FFFFFF";
 	}
@@ -181,6 +182,24 @@ pub fn agents_summary(attention: usize, done: usize, working: usize) -> String {
 		})
 		.collect();
 	svg(background, &inner)
+}
+
+/// Previous / next page of AI sessions. `target` is (page, pages) it would go
+/// to, if anywhere; orange when a session over there needs the user.
+pub fn page_arrow(next: bool, target: Option<(usize, usize)>, attention: bool) -> String {
+	let glyph = if next { "▶" } else { "◀" };
+	match target {
+		Some((page, pages)) => {
+			let (background, sub) = if attention { ("#7C2D12", "#FDBA74") } else { ("#1E293B", "#94A3B8") };
+			let inner = format!(
+				"{}{}",
+				centered(58.0, 50.0, "#E2E8F0", 400, glyph),
+				centered(112.0, 24.0, sub, 700, &format!("{}/{}", page + 1, pages))
+			);
+			svg(background, &inner)
+		}
+		None => svg("#0B1120", &centered(58.0, 50.0, "#334155", 400, glyph)),
+	}
 }
 
 /// Previous / next key. `target` is where it would go, if anywhere.

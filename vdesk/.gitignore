@@ -3,6 +3,7 @@
 /tools/deploy.log
 /plugin/local.virtualdesktop.sdPlugin/vdesk.exe
 /plugin/local.virtualdesktop.sdPlugin/vdesk.log
+/plugin/local.virtualdesktop.sdPlugin/vdesk.prev.log
 /plugin/local.virtualdesktop.sdPlugin/logs/
 /plugin/local.virtualdesktop.sdPlugin/agents.json
 /hook-bin/

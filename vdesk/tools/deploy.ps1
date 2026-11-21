@@ -3,6 +3,9 @@
 #
 #   -ApplyLayout  also write every profile in layout\ (Default.json, AI.json, ...)
 #                 to the Stream Deck; existing files are kept as <name>.json.bak-<time>
+#
+# Exits 1 when a step fails (details in tools\deploy.log). OpenDeck is started
+# again even then, so a failed deploy does not leave the Stream Deck dead.
 param([switch]$ApplyLayout)
 
 $ErrorActionPreference = 'Stop'
@@ -17,12 +20,15 @@ function Write-Log([string]$m) { Add-Content -LiteralPath $log -Value "$(Get-Dat
 Set-Content -LiteralPath $log -Value "$(Get-Date -Format s) deploy (ApplyLayout=$ApplyLayout)" -Encoding UTF8
 
 function Copy-WithRetry([string]$from, [string]$to) {
+	$last = $null
 	for ($i = 0; $i -lt 20; $i++) {
-		try { Copy-Item -LiteralPath $from -Destination $to -Force; return } catch { Start-Sleep -Milliseconds 250 }
+		try { Copy-Item -LiteralPath $from -Destination $to -Force; return } catch { $last = $_; Start-Sleep -Milliseconds 250 }
 	}
-	throw "could not replace $to (in use)"
+	throw "could not replace $to : $last"
 }
 
+$stopped = $false
+$failed = $false
 try {
 	# Refuse to run inside the sandbox: a probe written to %APPDATA% would land in a package copy.
 	$probe = Join-Path $config '.deploy-probe'
@@ -31,7 +37,13 @@ try {
 	Remove-Item -LiteralPath $probe -Force
 	if ($shadow) { $shadow | Remove-Item -Force; throw 'running inside an app sandbox; start this through tools\outside.ps1' }
 
+	# Nothing to install: say so before OpenDeck is stopped for it.
+	$built = 'vdesk.exe', 'agent-hook.exe' | ForEach-Object { Join-Path $root "target\release\$_" }
+	$missing = $built | Where-Object { -not (Test-Path -LiteralPath $_) }
+	if ($missing) { throw "not built: $($missing -join ', ') (run cargo build --release)" }
+
 	# 1. stop OpenDeck and the plugin so files can be replaced
+	$stopped = $true
 	Get-Process -Name opendeck*, vdesk -ErrorAction SilentlyContinue | Stop-Process -Force
 	$deadline = (Get-Date).AddSeconds(10)
 	while ((Get-Process -Name opendeck*, vdesk -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
@@ -65,11 +77,22 @@ try {
 		}
 	}
 
-	# 5. start OpenDeck again (tray only)
-	Start-Process -FilePath $opendeck -ArgumentList '--hide'
-	Write-Log 'started OpenDeck'
-	Write-Log 'OK'
 }
 catch {
+	$failed = $true
 	Write-Log "ERROR: $_"
 }
+
+# 5. start OpenDeck again (tray only), also after a failure
+if ($stopped -and -not (Get-Process -Name opendeck -ErrorAction SilentlyContinue)) {
+	try {
+		Start-Process -FilePath $opendeck -ArgumentList '--hide'
+		Write-Log 'started OpenDeck'
+	}
+	catch {
+		$failed = $true
+		Write-Log "ERROR: could not start OpenDeck: $_"
+	}
+}
+if ($failed) { Write-Log 'FAILED'; exit 1 }
+Write-Log 'OK'

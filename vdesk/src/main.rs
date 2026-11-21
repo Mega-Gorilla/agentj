@@ -9,7 +9,12 @@
 //!
 //! AI actions (fed by Claude Code / Codex hooks, see agents.rs):
 //! - AI Session (slot): one running session per key, coloured by state.
-//!   Press to go to that session's desktop.
+//!   Press to go to that session's desktop. A key whose settings say
+//!   `"tool": "claude"` or `"codex"` shows only that tool's sessions; keys
+//!   without one list sessions of tools that have no row. Keys for a tool
+//!   make columns, one desktop per column, Claude above Codex.
+//! - AI Page Previous / Next: when the columns do not fit, page through them.
+//!   Orange when a session on a page that way needs the user.
 //! - AI Summary: how many need you / have answered / are working. Press to
 //!   go to the session that needs you most.
 //!
@@ -35,6 +40,8 @@ const PREV: ActionUuid = "local.virtualdesktop.prev";
 const NEXT: ActionUuid = "local.virtualdesktop.next";
 const AGENT: ActionUuid = "local.virtualdesktop.agent";
 const AGENTS: ActionUuid = "local.virtualdesktop.agents";
+const AGENT_PREV: ActionUuid = "local.virtualdesktop.agentprev";
+const AGENT_NEXT: ActionUuid = "local.virtualdesktop.agentnext";
 
 static VD: OnceLock<vd::Handle> = OnceLock::new();
 
@@ -46,6 +53,19 @@ fn vd() -> &'static vd::Handle {
 static SENT: LazyLock<Mutex<HashMap<InstanceId, String>>> = LazyLock::new(Default::default);
 /// One redraw at a time.
 static REDRAW: Mutex<()> = Mutex::const_new(());
+/// The tool each AI Session key is for, from its settings. openaction only
+/// hands settings to the callbacks, so they are kept here.
+static LANES: LazyLock<Mutex<HashMap<InstanceId, Option<agents::Tool>>>> = LazyLock::new(Default::default);
+/// The page of AI sessions each device shows.
+static PAGE: LazyLock<Mutex<HashMap<String, usize>>> = LazyLock::new(Default::default);
+
+fn lane_of(settings: &serde_json::Value) -> Option<agents::Tool> {
+	match settings.get("tool").and_then(serde_json::Value::as_str)?.to_ascii_lowercase().as_str() {
+		"claude" => Some(agents::Tool::Claude),
+		"codex" => Some(agents::Tool::Codex),
+		_ => None,
+	}
+}
 
 /// Visible keys of one action in reading order, grouped by device.
 async fn ordered(action: ActionUuid) -> Vec<Arc<Instance>> {
@@ -89,7 +109,7 @@ fn neighbour(snap: &vd::Snapshot, next: bool) -> Option<(usize, &str)> {
 
 /// Visible AI sessions with their desktop index, in display order:
 /// by desktop, then Claude before Codex, then name.
-fn agent_view(snap: &vd::Snapshot) -> Vec<(agents::Session, Option<usize>)> {
+fn agent_view(snap: &vd::Snapshot) -> Vec<(agents::View, Option<usize>)> {
 	let mut list: Vec<_> = agents::visible()
 		.into_iter()
 		.map(|s| {
@@ -97,16 +117,136 @@ fn agent_view(snap: &vd::Snapshot) -> Vec<(agents::Session, Option<usize>)> {
 			(s, index)
 		})
 		.collect();
-	list.sort_by_cached_key(|(s, i)| (i.unwrap_or(usize::MAX), s.tool, s.label()));
+	list.sort_by_cached_key(|(s, i)| (i.unwrap_or(usize::MAX), s.tool, s.label.clone()));
 	list
 }
 
-fn card<'a>(s: &'a agents::Session, label: &'a str, desktop: Option<usize>, now: u64) -> render::AgentCard<'a> {
+/// Where every session goes on one device, page by page.
+#[derive(Debug, PartialEq)]
+struct Pages {
+	/// Per page, the session each key shows (an index into the session list).
+	keys: Vec<Vec<Option<usize>>>,
+	/// The page each session is on; None when no key can show it.
+	page_of: Vec<Option<usize>>,
+}
+
+/// Lay the sessions out on one device's AI Session keys.
+///
+/// `lanes` is the tool of each key, in reading order; `sessions` is (tool,
+/// desktop index) of each session, in display order (by desktop). The k-th
+/// key of every tool's row makes column k, the Claude row above the Codex
+/// row. Each desktop with sessions takes the next column(s): its Claude
+/// sessions in the Claude row and its Codex sessions in the Codex row, so one
+/// desktop's sessions sit one above the other. Columns run on to further
+/// pages, without splitting a desktop across two pages when it fits on one.
+/// Keys set to no tool list, in order, the sessions of tools that have no row
+/// (all of them when no key is set to a tool).
+fn paginate(lanes: &[Option<agents::Tool>], sessions: &[(agents::Tool, Option<usize>)]) -> Pages {
+	use agents::Tool;
+	const TOOLS: [Tool; 2] = [Tool::Claude, Tool::Codex];
+	let rows: Vec<Vec<usize>> =
+		TOOLS.iter().map(|t| (0..lanes.len()).filter(|&k| lanes[k] == Some(*t)).collect()).collect();
+	let spare: Vec<usize> = (0..lanes.len()).filter(|&k| lanes[k].is_none()).collect();
+	let width = rows.iter().map(Vec::len).filter(|&n| n > 0).min().unwrap_or(0);
+	let row_of = |j: usize| TOOLS.iter().position(|t| *t == sessions[j].0).filter(|&r| !rows[r].is_empty());
+
+	let mut cells: Vec<(usize, usize, usize)> = Vec::new(); // (row, column, session)
+	let mut listed: Vec<usize> = Vec::new();
+	let mut column = 0;
+	let mut start = 0;
+	while start < sessions.len() {
+		// One desktop's sessions; each session on an unknown desktop stands alone.
+		let desktop = sessions[start].1;
+		let end = match desktop {
+			Some(_) => (start..sessions.len()).find(|&j| sessions[j].1 != desktop).unwrap_or(sessions.len()),
+			None => start + 1,
+		};
+		let need = (0..TOOLS.len()).map(|r| (start..end).filter(|&j| row_of(j) == Some(r)).count()).max().unwrap_or(0);
+		if need > 0 && need <= width && column % width + need > width {
+			column += width - column % width; // start this desktop on the next page
+		}
+		let mut used = [0usize; TOOLS.len()];
+		for j in start..end {
+			match row_of(j) {
+				Some(r) => {
+					cells.push((r, column + used[r], j));
+					used[r] += 1;
+				}
+				None => listed.push(j),
+			}
+		}
+		column += need;
+		start = end;
+	}
+
+	let grid_pages = if width == 0 { 0 } else { column.div_ceil(width) };
+	let list_pages = if spare.is_empty() { 0 } else { listed.len().div_ceil(spare.len()) };
+	let count = grid_pages.max(list_pages).max(1);
+	let mut keys = vec![vec![None; lanes.len()]; count];
+	let mut page_of = vec![None; sessions.len()];
+	for (r, c, j) in cells {
+		keys[c / width][rows[r][c % width]] = Some(j);
+		page_of[j] = Some(c / width);
+	}
+	if !spare.is_empty() {
+		for (n, j) in listed.into_iter().enumerate() {
+			keys[n / spare.len()][spare[n % spare.len()]] = Some(j);
+			page_of[j] = Some(n / spare.len());
+		}
+	}
+	Pages { keys, page_of }
+}
+
+/// One device's AI Session keys on the page it is showing.
+struct AgentPage {
+	/// Each key with the index into the session list it shows.
+	keys: Vec<(Arc<Instance>, Option<usize>)>,
+	page: usize,
+	pages: usize,
+	page_of: Vec<Option<usize>>,
+}
+
+impl AgentPage {
+	/// The page the previous / next key goes to, if there is one.
+	fn step(&self, next: bool) -> Option<usize> {
+		let to = if next { self.page + 1 } else { self.page.checked_sub(1)? };
+		(to < self.pages).then_some(to)
+	}
+
+	/// Whether a session on a page that way needs the user.
+	fn attention_toward(&self, next: bool, sessions: &[(agents::View, Option<usize>)]) -> bool {
+		sessions.iter().zip(&self.page_of).any(|((s, _), page)| {
+			s.state.needs_user() && page.is_some_and(|p| if next { p > self.page } else { p < self.page })
+		})
+	}
+}
+
+/// The AI Session keys of every device, laid out for the page it is on.
+async fn agent_pages(sessions: &[(agents::View, Option<usize>)]) -> HashMap<String, AgentPage> {
+	let slots = ordered(AGENT).await;
+	let placed: Vec<_> = sessions.iter().map(|(s, desktop)| (s.tool, *desktop)).collect();
+	let lanes = LANES.lock().await;
+	let current = PAGE.lock().await;
+	let mut out = HashMap::new();
+	for device in slots.chunk_by(|a, b| a.device_id == b.device_id) {
+		let device_id = device[0].device_id.clone();
+		let device_lanes: Vec<_> = device.iter().map(|i| lanes.get(&i.instance_id).copied().flatten()).collect();
+		let Pages { keys, page_of } = paginate(&device_lanes, &placed);
+		let pages = keys.len();
+		// Sessions may have gone since the page was picked.
+		let page = current.get(&device_id).copied().unwrap_or(0).min(pages - 1);
+		let keys = device.iter().cloned().zip(keys[page].iter().copied()).collect();
+		out.insert(device_id, AgentPage { keys, page, pages, page_of });
+	}
+	out
+}
+
+fn card(s: &agents::View, desktop: Option<usize>, now: u64) -> render::AgentCard<'_> {
 	render::AgentCard {
 		tool: s.tool,
-		name: label,
+		name: &s.label,
 		state: s.state,
-		stale: s.is_stale(now),
+		stale: s.stale,
 		desktop,
 		elapsed_ms: now.saturating_sub(s.since),
 	}
@@ -141,26 +281,28 @@ async fn redraw_all() {
 
 	let now = agents::now_ms();
 	let sessions = agent_view(&snap);
-	let mut seen_per_device: HashMap<String, usize> = HashMap::new();
-	for slot in ordered(AGENT).await {
-		let counter = seen_per_device.entry(slot.device_id.clone()).or_insert(0);
-		let index = *counter;
-		*counter += 1;
-		let svg = match sessions.get(index) {
-			Some((s, desktop)) => {
-				let label = s.label();
-				render::agent(&card(s, &label, *desktop, now))
-			}
+	let pages = agent_pages(&sessions).await;
+	for (slot, pick) in pages.values().flat_map(|p| &p.keys) {
+		let svg = match pick.map(|i| &sessions[i]) {
+			Some((s, desktop)) => render::agent(&card(s, *desktop, now)),
 			None => render::empty(),
 		};
-		send(&slot, svg).await;
+		send(slot, svg).await;
+	}
+	for next in [false, true] {
+		for key in visible_instances(if next { AGENT_NEXT } else { AGENT_PREV }).await {
+			let page = pages.get(&key.device_id);
+			let target = page.and_then(|p| Some((p.step(next)?, p.pages)));
+			let attention = page.is_some_and(|p| p.attention_toward(next, &sessions));
+			send(&key, render::page_arrow(next, target, attention)).await;
+		}
 	}
 	let summary_keys = visible_instances(AGENTS).await;
 	if !summary_keys.is_empty() {
-		let count = |f: &dyn Fn(&agents::Session) -> bool| sessions.iter().filter(|(s, _)| f(s)).count();
-		let attention = count(&|s| matches!(s.state, agents::State::Permission | agents::State::Input | agents::State::Error));
+		let count = |f: &dyn Fn(&agents::View) -> bool| sessions.iter().filter(|(s, _)| f(s)).count();
+		let attention = count(&|s| s.state.needs_user());
 		let done = count(&|s| s.state == agents::State::Done);
-		let working = count(&|s| s.state == agents::State::Working && !s.is_stale(now));
+		let working = count(&|s| matches!(s.state, agents::State::Working | agents::State::Reviewing) && !s.stale);
 		for key in summary_keys {
 			send(&key, render::agents_summary(attention, done, working)).await;
 		}
@@ -252,8 +394,55 @@ impl Action for AgentAction {
 	const UUID: ActionUuid = AGENT;
 	type Settings = serde_json::Value;
 
-	async fn will_appear(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
-		log::info!("agent slot appeared: {}", describe(instance));
+	async fn will_appear(&self, instance: &Instance, settings: &Self::Settings) -> OpenActionResult<()> {
+		let lane = lane_of(settings);
+		log::info!("agent slot appeared: {} for {lane:?}", describe(instance));
+		LANES.lock().await.insert(instance.instance_id.clone(), lane);
+		redraw_all().await;
+		Ok(())
+	}
+
+	async fn did_receive_settings(&self, instance: &Instance, settings: &Self::Settings) -> OpenActionResult<()> {
+		LANES.lock().await.insert(instance.instance_id.clone(), lane_of(settings));
+		redraw_all().await;
+		Ok(())
+	}
+
+	async fn will_disappear(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		LANES.lock().await.remove(&instance.instance_id);
+		forget(instance).await;
+		Ok(())
+	}
+
+	/// Go to the desktop the session is on. A session whose desktop is not
+	/// known yet (shown as "?") gets an alert; an empty slot does nothing.
+	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		let sessions = agent_view(&vd().snapshot());
+		let pages = agent_pages(&sessions).await;
+		let pick = pages
+			.get(&instance.device_id)
+			.and_then(|p| p.keys.iter().find(|(slot, _)| slot.instance_id == instance.instance_id))
+			.and_then(|(_, pick)| *pick);
+		match pick.map(|i| &sessions[i]) {
+			Some((_, Some(desktop))) => vd().switch(vd::Target::Index(*desktop)),
+			Some((s, None)) => {
+				log::info!("{:?} {}: desktop not known yet", s.tool, s.label);
+				instance.show_alert().await?
+			}
+			None => {}
+		}
+		Ok(())
+	}
+}
+
+/// Previous / next page of AI sessions, for when they do not fit on one.
+struct PageAction<const NEXT_DIR: bool>;
+#[async_trait]
+impl<const NEXT_DIR: bool> Action for PageAction<NEXT_DIR> {
+	const UUID: ActionUuid = if NEXT_DIR { AGENT_NEXT } else { AGENT_PREV };
+	type Settings = serde_json::Value;
+
+	async fn will_appear(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		redraw_all().await;
 		Ok(())
 	}
@@ -263,18 +452,14 @@ impl Action for AgentAction {
 		Ok(())
 	}
 
-	/// Go to the desktop the session is on. A session whose desktop is not
-	/// known yet (shown as "?") gets an alert; an empty slot does nothing.
 	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		let sessions = agent_view(&vd().snapshot());
-		let slots = ordered(AGENT).await;
-		match slot_index(&slots, instance).and_then(|i| sessions.get(i)) {
-			Some((_, Some(desktop))) => vd().switch(vd::Target::Index(*desktop)),
-			Some((s, None)) => {
-				log::info!("{:?} {}: desktop not known yet", s.tool, s.label());
-				instance.show_alert().await?
-			}
-			None => {}
+		let pages = agent_pages(&sessions).await;
+		let Some(page) = pages.get(&instance.device_id) else { return Ok(()) };
+		if let Some(to) = page.step(NEXT_DIR) {
+			log::info!("AI page {} / {}", to + 1, page.pages);
+			PAGE.lock().await.insert(instance.device_id.clone(), to);
+			redraw_all().await;
 		}
 		Ok(())
 	}
@@ -315,10 +500,15 @@ impl Action for AgentsSummaryAction {
 fn init_logging(to_file: bool) {
 	use simplelog::*;
 	let config = ConfigBuilder::new().set_time_offset_to_local().unwrap_or_else(|b| b).build();
+	// Keep the previous run's log: a restart (deploy) would otherwise wipe
+	// what led up to it.
 	let file = to_file
 		.then(|| std::env::current_exe().ok().map(|p| p.with_file_name("vdesk.log")))
 		.flatten()
-		.and_then(|p| std::fs::File::create(p).ok());
+		.and_then(|p| {
+			let _ = std::fs::rename(&p, p.with_file_name("vdesk.prev.log"));
+			std::fs::File::create(p).ok()
+		});
 	let _ = match file {
 		Some(f) => WriteLogger::init(LevelFilter::Info, config, f),
 		None => TermLogger::init(LevelFilter::Info, config, TerminalMode::Stdout, ColorChoice::Never),
@@ -368,40 +558,47 @@ fn selftest() -> std::process::ExitCode {
 	desk.push(render::empty());
 	desk.push(render::empty());
 
-	// AI profile with sample sessions, one of each state.
+	// AI profile with sample sessions (one of each state) in display order,
+	// enough desktops for a second page.
 	use agents::{State, Tool};
-	let samples: [(Tool, &str, State, bool, Option<usize>, u64); 7] = [
-		(Tool::Claude, "GMK01", State::Working, false, Some(2), 3 * 60_000),
-		(Tool::Codex, "MatterMost", State::Done, false, Some(2), 12 * 60_000),
-		(Tool::Claude, "GMK02", State::Permission, false, Some(3), 40_000),
-		(Tool::Claude, "Fujitu01", State::Done, false, Some(4), 2 * 3_600_000),
-		(Tool::Codex, "見積もり整理レセコン", State::Input, false, Some(4), 5 * 60_000),
-		(Tool::Claude, "Epson01", State::Working, true, Some(5), 20 * 60_000),
-		(Tool::Codex, "DoveBar", State::Idle, false, None, 0),
+	let sample = |tool, name, state, desktop, elapsed_ms| render::AgentCard { tool, name, state, stale: false, desktop, elapsed_ms };
+	let samples = [
+		sample(Tool::Claude, "Unity", State::Working, Some(1), 60_000),
+		sample(Tool::Codex, "Unity", State::Reviewing, Some(1), 4_000),
+		sample(Tool::Claude, "GMK01", State::Working, Some(2), 3 * 60_000),
+		sample(Tool::Codex, "MatterMost", State::Done, Some(2), 12 * 60_000),
+		sample(Tool::Claude, "GMK02", State::Done, Some(3), 40_000),
+		sample(Tool::Claude, "Fujitu01", State::Done, Some(4), 2 * 3_600_000),
+		sample(Tool::Codex, "見積もり整理レセコン", State::Input, Some(4), 5 * 60_000),
+		render::AgentCard { stale: true, ..sample(Tool::Claude, "Epson01", State::Working, Some(5), 20 * 60_000) },
+		sample(Tool::Codex, "DoveBar", State::Permission, None, 40_000),
 	];
-	let mut ai: Vec<String> = samples
-		.iter()
-		.map(|(tool, name, state, stale, desktop, elapsed)| {
-			render::agent(&render::AgentCard {
-				tool: *tool,
-				name,
-				state: *state,
-				stale: *stale,
-				desktop: *desktop,
-				elapsed_ms: *elapsed,
+	// Same as layout/AI.json: Claude row, Codex row, then
+	// [→Default][ ][◀][summary][▶].
+	let lanes: Vec<Option<Tool>> = [Some(Tool::Claude); 5].into_iter().chain([Some(Tool::Codex); 5]).collect();
+	let placed: Vec<(Tool, Option<usize>)> = samples.iter().map(|s| (s.tool, s.desktop)).collect();
+	let Pages { keys, page_of } = paginate(&lanes, &placed);
+	let pages = keys.len();
+	let mut grids = String::new();
+	for (page, picks) in keys.iter().enumerate() {
+		let mut ai: Vec<String> =
+			picks.iter().map(|pick| pick.map_or_else(render::empty, |i| render::agent(&samples[i]))).collect();
+		let attention = |next: bool| {
+			samples.iter().zip(&page_of).any(|(s, p)| {
+				s.state.needs_user() && p.is_some_and(|p| if next { p > page } else { p < page })
 			})
-		})
-		.collect();
-	while ai.len() < 13 {
+		};
+		ai.push(render::empty()); // the Starter Pack switch to Default
 		ai.push(render::empty());
+		ai.push(render::page_arrow(false, page.checked_sub(1).map(|p| (p, pages)), attention(false)));
+		ai.push(render::agents_summary(2, 2, 2));
+		ai.push(render::page_arrow(true, (page + 1 < pages).then_some((page + 1, pages)), attention(true)));
+		grids.push_str(&preview_grid(&format!("AI page {}/{pages} (sample data)", page + 1), &ai));
 	}
-	ai.push(render::agents_summary(2, 2, 1));
-	ai.push(render::empty());
 
 	let html = format!(
-		r#"<!doctype html><meta charset="utf-8"><title>vdesk preview</title><style>body{{background:#111;color:#ccc;font-family:sans-serif;margin:24px}}div{{display:grid;grid-template-columns:repeat(5,96px);gap:12px;margin-bottom:24px}}img{{width:96px;height:96px;border-radius:12px}}h2{{font-size:14px}}</style>{}{}"#,
-		preview_grid("Default", &desk),
-		preview_grid("AI (sample data)", &ai)
+		r#"<!doctype html><meta charset="utf-8"><title>vdesk preview</title><style>body{{background:#111;color:#ccc;font-family:sans-serif;margin:24px}}div{{display:grid;grid-template-columns:repeat(5,96px);gap:12px;margin-bottom:24px}}img{{width:96px;height:96px;border-radius:12px}}h2{{font-size:14px}}</style>{}{grids}"#,
+		preview_grid("Default", &desk)
 	);
 	let path = std::env::current_dir().unwrap_or_default().join("preview.html");
 	match std::fs::write(&path, html) {
@@ -429,6 +626,8 @@ async fn main() -> std::process::ExitCode {
 	register_action(StepAction::<true>).await;
 	register_action(AgentAction).await;
 	register_action(AgentsSummaryAction).await;
+	register_action(PageAction::<false>).await;
+	register_action(PageAction::<true>).await;
 
 	tokio::spawn(agents::serve());
 	tokio::spawn(async {
@@ -459,5 +658,66 @@ async fn main() -> std::process::ExitCode {
 			log::error!("plugin stopped: {e}");
 			std::process::ExitCode::FAILURE
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use agents::Tool::{Claude, Codex};
+
+	/// 3 columns: a Claude row over a Codex row.
+	const LANES3: [Option<agents::Tool>; 6] = [Some(Claude), Some(Claude), Some(Claude), Some(Codex), Some(Codex), Some(Codex)];
+
+	fn keys(lanes: &[Option<agents::Tool>], sessions: &[(agents::Tool, Option<usize>)]) -> Vec<Vec<Option<usize>>> {
+		paginate(lanes, sessions).keys
+	}
+
+	#[test]
+	fn same_desktop_sits_in_one_column() {
+		// desktop 0: Claude only; desktop 2: Claude + Codex; desktop 4: Codex only
+		let sessions = [(Claude, Some(0)), (Claude, Some(2)), (Codex, Some(2)), (Codex, Some(4))];
+		assert_eq!(keys(&LANES3, &sessions), vec![vec![Some(0), Some(1), None, None, Some(2), Some(3)]]);
+	}
+
+	#[test]
+	fn a_desktop_with_two_of_one_tool_takes_two_columns() {
+		let sessions = [(Claude, Some(1)), (Claude, Some(1)), (Codex, Some(1)), (Claude, Some(3))];
+		assert_eq!(keys(&LANES3, &sessions), vec![vec![Some(0), Some(1), Some(3), Some(2), None, None]]);
+	}
+
+	#[test]
+	fn columns_run_on_to_the_next_page_without_splitting_a_desktop() {
+		// desktop 2 needs 2 columns but only 1 is left on page 1
+		let sessions = [(Claude, Some(0)), (Claude, Some(1)), (Claude, Some(2)), (Claude, Some(2)), (Codex, Some(2))];
+		let pages = paginate(&LANES3, &sessions);
+		assert_eq!(
+			pages.keys,
+			vec![vec![Some(0), Some(1), None, None, None, None], vec![Some(2), Some(3), None, Some(4), None, None]]
+		);
+		assert_eq!(pages.page_of, vec![Some(0), Some(0), Some(1), Some(1), Some(1)]);
+	}
+
+	#[test]
+	fn sessions_on_unknown_desktops_stand_alone() {
+		let sessions = [(Claude, None), (Codex, None)];
+		assert_eq!(keys(&LANES3, &sessions), vec![vec![Some(0), None, None, None, Some(1), None]]);
+	}
+
+	#[test]
+	fn a_tool_without_a_row_goes_to_keys_for_no_tool() {
+		let lanes = [Some(Claude), Some(Claude), None];
+		assert_eq!(keys(&lanes, &[(Codex, Some(0)), (Claude, Some(0))]), vec![vec![Some(1), None, Some(0)]]);
+	}
+
+	#[test]
+	fn keys_for_no_tool_list_everything_in_pages() {
+		let sessions = [(Claude, Some(0)), (Codex, Some(0)), (Claude, Some(1))];
+		assert_eq!(keys(&[None, None], &sessions), vec![vec![Some(0), Some(1)], vec![Some(2), None]]);
+	}
+
+	#[test]
+	fn no_sessions_is_one_empty_page() {
+		assert_eq!(keys(&LANES3, &[]), vec![vec![None; 6]]);
 	}
 }
