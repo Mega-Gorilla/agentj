@@ -1,0 +1,437 @@
+{
+  "keys": [
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.0.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.1.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.2.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.3.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.4.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.5.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.6.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.7.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.8.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop",
+        "uuid": "local.virtualdesktop.slot",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.9.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Previous Desktop",
+        "uuid": "local.virtualdesktop.prev",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "左隣のデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": true,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.10.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Desktop Info",
+        "uuid": "local.virtualdesktop.info",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "現在のデスクトップ番号・総数・名前。押すと再読み込み",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/info.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/info.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.11.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/info.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Next Desktop",
+        "uuid": "local.virtualdesktop.next",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "右隣のデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": true,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.12.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    null,
+    null
+  ],
+  "sliders": [],
+  "infobars": []
+}

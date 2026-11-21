@@ -1,0 +1,51 @@
+{
+	"Name": "Virtual Desktop",
+	"Author": "local",
+	"Version": "0.1.0.0",
+	"Description": "Windows 11 の仮想デスクトップを切り替える",
+	"Icon": "imgs/plugin",
+	"Category": "Virtual Desktop",
+	"CategoryIcon": "imgs/plugin",
+	"CodePathWin": "vdesk.exe",
+	"SDKVersion": 2,
+	"OS": [{ "Platform": "windows", "MinimumVersion": "10" }],
+	"Software": { "MinimumVersion": "6.0" },
+	"Actions": [
+		{
+			"UUID": "local.virtualdesktop.slot",
+			"Name": "Desktop",
+			"Tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+			"Icon": "imgs/slot",
+			"States": [{ "Image": "imgs/slot", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": false
+		},
+		{
+			"UUID": "local.virtualdesktop.info",
+			"Name": "Desktop Info",
+			"Tooltip": "現在のデスクトップ番号・総数・名前。押すと再読み込み",
+			"Icon": "imgs/info",
+			"States": [{ "Image": "imgs/info", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": false
+		},
+		{
+			"UUID": "local.virtualdesktop.prev",
+			"Name": "Previous Desktop",
+			"Tooltip": "左隣のデスクトップへ",
+			"Icon": "imgs/prev",
+			"States": [{ "Image": "imgs/prev", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": true
+		},
+		{
+			"UUID": "local.virtualdesktop.next",
+			"Name": "Next Desktop",
+			"Tooltip": "右隣のデスクトップへ",
+			"Icon": "imgs/next",
+			"States": [{ "Image": "imgs/next", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": true
+		}
+	]
+}
