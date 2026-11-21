@@ -139,7 +139,7 @@ pub fn agent(card: &AgentCard) -> String {
 			State::Done => ("#15803D", "返答済み", "#DCFCE7"),
 			State::Working => ("#000000", "作業中", "#94A3B8"),
 			State::Reviewing => ("#1A1A1A", "自動審査中", "#A1A1AA"),
-			State::Idle => ("#1E293B", "待機中", "#94A3B8"),
+			State::Idle => ("#0D0D0D", "待機中", "#71717A"),
 		}
 	};
 	let (tool, mut tool_colour) = match card.tool {
