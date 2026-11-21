@@ -18,6 +18,8 @@ const POLL: Duration = Duration::from_secs(3);
 pub struct Snapshot {
 	/// Desktop names in Windows order. An empty string means "never renamed".
 	pub names: Vec<String>,
+	/// Desktop GUIDs in the same order (stable across renames and reordering).
+	pub ids: Vec<String>,
 	/// Index of the desktop that is showing now.
 	pub current: usize,
 }
@@ -132,8 +134,9 @@ fn start_listener(tx: &mpsc::Sender<Msg>) -> Option<winvd::DesktopEventThread> {
 pub fn read() -> winvd::Result<Snapshot> {
 	let desktops = winvd::get_desktops()?;
 	let names = desktops.iter().map(|d| d.get_name().unwrap_or_default()).collect();
+	let ids = desktops.iter().map(|d| d.get_id().map(|g| format!("{g:?}")).unwrap_or_default()).collect();
 	let current = winvd::get_current_desktop()?.get_index()? as usize;
-	Ok(Snapshot { names, current })
+	Ok(Snapshot { names, ids, current })
 }
 
 fn publish(state_tx: &watch::Sender<Snapshot>) {

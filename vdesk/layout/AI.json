@@ -1,0 +1,504 @@
+{
+  "keys": [
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.0.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.1.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.2.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.3.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.4.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.5.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.6.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.7.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.8.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.9.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.10.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.11.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Session",
+        "uuid": "local.virtualdesktop.agent",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.12.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "AI Summary",
+        "uuid": "local.virtualdesktop.agents",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "要対応・返答済・作業中の数。押すと一番待たせているセッションのデスクトップへ",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agents.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agents.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.13.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agents.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
+    {
+      "action": {
+        "name": "Switch Profile",
+        "uuid": "com.amansprojects.starterpack.switchprofile",
+        "plugin": "com.amansprojects.starterpack.sdPlugin",
+        "tooltip": "Switch the selected profile",
+        "icon": "__OPENDECK__/plugins/com.amansprojects.starterpack.sdPlugin/icons/switchProfile.png",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": true,
+        "property_inspector": "__OPENDECK__/plugins/com.amansprojects.starterpack.sdPlugin/propertyInspector/switchProfile.html",
+        "controllers": [
+          "Keypad",
+          "Encoder"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "actionDefaultImage"
+          }
+        ]
+      },
+      "context": "Keypad.14.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/to-desk.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {
+        "device": "__DEVICE__",
+        "profile": "Default"
+      },
+      "children": null
+    }
+  ],
+  "sliders": [],
+  "infobars": []
+}

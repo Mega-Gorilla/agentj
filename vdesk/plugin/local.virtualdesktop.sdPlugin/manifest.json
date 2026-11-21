@@ -2,7 +2,7 @@
 	"Name": "Virtual Desktop",
 	"Author": "local",
 	"Version": "0.1.0.0",
-	"Description": "Windows 11 の仮想デスクトップを切り替える",
+	"Description": "Windows 11 の仮想デスクトップ切り替えと、Claude Code / Codex の状態表示",
 	"Icon": "imgs/plugin",
 	"Category": "Virtual Desktop",
 	"CategoryIcon": "imgs/plugin",
@@ -46,6 +46,24 @@
 			"States": [{ "Image": "imgs/next", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
 			"SupportedInMultiActions": true
+		},
+		{
+			"UUID": "local.virtualdesktop.agent",
+			"Name": "AI Session",
+			"Tooltip": "Claude Code / Codex のセッションを並べた順に表示。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+			"Icon": "imgs/agent",
+			"States": [{ "Image": "imgs/agent", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": false
+		},
+		{
+			"UUID": "local.virtualdesktop.agents",
+			"Name": "AI Summary",
+			"Tooltip": "要対応・返答済・作業中の数。押すと一番待たせているセッションのデスクトップへ",
+			"Icon": "imgs/agents",
+			"States": [{ "Image": "imgs/agents", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": false
 		}
 	]
 }

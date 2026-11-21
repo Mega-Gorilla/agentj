@@ -2,6 +2,8 @@
 
 use base64::Engine;
 
+use crate::agents::{State, Tool};
+
 const FONT: &str = "'Yu Gothic UI','Meiryo','Segoe UI',sans-serif";
 /// Usable text width inside the key.
 const TEXT_W: f32 = 128.0;
@@ -100,6 +102,85 @@ pub fn info(current: Option<(usize, &str)>, count: usize) -> String {
 		centered(106.0, size, "#94A3B8", 400, &text)
 	);
 	svg("#0F172A", &inner)
+}
+
+fn elapsed(ms: u64) -> String {
+	let minutes = ms / 60_000;
+	match minutes {
+		0 => "今".to_owned(),
+		1..=59 => format!("{minutes}分"),
+		60..=1439 => format!("{}時間", minutes / 60),
+		_ => format!("{}日", minutes / 1440),
+	}
+}
+
+pub struct AgentCard<'a> {
+	pub tool: Tool,
+	pub name: &'a str,
+	pub state: State,
+	pub stale: bool,
+	/// 0-based desktop index, if known
+	pub desktop: Option<usize>,
+	/// time in the current state
+	pub elapsed_ms: u64,
+}
+
+/// One AI session: tool, desktop number, name, state and how long it has been in it.
+pub fn agent(card: &AgentCard) -> String {
+	let (background, label, label_colour) = if card.stale {
+		("#27272A", "応答なし?", "#A1A1AA")
+	} else {
+		match card.state {
+			State::Permission => ("#C2410C", "承認待ち", "#FFFFFF"),
+			State::Input => ("#B45309", "入力待ち", "#FFFFFF"),
+			State::Error => ("#991B1B", "エラー", "#FFFFFF"),
+			State::Done => ("#1D4ED8", "返答済み", "#DBEAFE"),
+			State::Working => ("#14532D", "作業中", "#4ADE80"),
+			State::Idle => ("#1E293B", "待機中", "#94A3B8"),
+		}
+	};
+	let (tool, mut tool_colour) = match card.tool {
+		Tool::Claude => ("Claude", "#F4A98A"),
+		Tool::Codex => ("Codex", "#9FE7C9"),
+	};
+	if !card.stale && !matches!(card.state, State::Working | State::Idle) {
+		// The tool colours do not read well on the strong state colours.
+		tool_colour = "#FFFFFF";
+	}
+	// Desktop number, or "?" while it is not known yet (pressing then does nothing).
+	let (desktop_text, desktop_opacity) = match card.desktop {
+		Some(i) => ((i + 1).to_string(), "0.7"),
+		None => ("?".to_owned(), "0.35"),
+	};
+	let desktop = format!(
+		r##"<rect x="104" y="8" width="32" height="26" rx="5" fill="none" stroke="#FFFFFF" stroke-opacity="{desktop_opacity}" stroke-width="2" stroke-dasharray="{}"/><text x="120" y="21" font-size="18" font-weight="700" fill="#FFFFFF" fill-opacity="{desktop_opacity}" text-anchor="middle" dominant-baseline="central">{desktop_text}</text>"##,
+		if card.desktop.is_some() { "none" } else { "4 3" }
+	);
+	let (name, name_size) = fit(card.name, 30.0, 15.0);
+	let (status, status_size) = fit(&format!("{label} {}", elapsed(card.elapsed_ms)), 22.0, 14.0);
+	let inner = format!(
+		r#"<text x="12" y="28" font-size="19" font-weight="700" fill="{tool_colour}">{tool}</text>{desktop}{}{}"#,
+		centered(74.0, name_size, "#FFFFFF", 700, &name),
+		centered(118.0, status_size, label_colour, 700, &status)
+	);
+	svg(background, &inner)
+}
+
+/// Counts across all sessions; turns orange when something needs the user.
+pub fn agents_summary(attention: usize, done: usize, working: usize) -> String {
+	let background = if attention > 0 { "#7C2D12" } else { "#0F172A" };
+	let rows = [("要対応", attention, "#FB923C"), ("返答済", done, "#93C5FD"), ("作業中", working, "#4ADE80")];
+	let inner: String = rows
+		.iter()
+		.enumerate()
+		.map(|(i, (label, count, colour))| {
+			let y = 36.0 + i as f32 * 38.0;
+			format!(
+				r##"<circle cx="20" cy="{y}" r="8" fill="{colour}"/><text x="36" y="{y}" font-size="22" fill="#E2E8F0" dominant-baseline="central">{label}</text><text x="134" y="{y}" font-size="28" font-weight="700" fill="#FFFFFF" text-anchor="end" dominant-baseline="central">{count}</text>"##
+			)
+		})
+		.collect();
+	svg(background, &inner)
 }
 
 /// Previous / next key. `target` is where it would go, if anywhere.

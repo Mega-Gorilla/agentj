@@ -15,8 +15,29 @@
 ```
 [1] [2] [3] [4] [5]
 [6] [7] [8] [9] [10]
-[◀] [n/N] [▶] [ ] [ ]
+[◀] [n/N] [▶] [ ] [AI]
 ```
+
+## AI プロファイル（Claude Code / Codex の状態）
+
+Default プロファイル右下の「AI」キーで切り替え（AI 側の右下で戻る）。
+
+| アクション | 動き |
+|---|---|
+| AI Session | 動いているセッションを1キーずつ。左上にツール名、右上にデスクトップ番号、中央にセッション名、下に状態と経過時間。押すとそのデスクトップへ |
+| AI Summary | 要対応（承認待ち・入力待ち・エラー）／返答済／作業中の数。押すと一番待たせているセッションのデスクトップへ |
+
+状態の色: 承認待ち=橙、入力待ち=黄土、返答済み=青、作業中=緑、待機中=紺、エラー=赤、15分音沙汰なしの作業中=灰「応答なし?」
+
+- 状態はフックから: `tools/install-hooks.ps1` が `~/.claude/settings.json` と `~/.codex/hooks.json` に
+  `hook-bin/agent-hook.exe` を非同期フックとして追記（既存のフックは残す、元ファイルは `.bak-日時`）。
+  外すときは `pwsh tools/install-hooks.ps1 -Uninstall`
+- agent-hook.exe は必要な項目だけを 127.0.0.1:47811 のプラグインへ送り、常に何も出力せず終了コード 0
+- セッション名: Claude は会話記録の `custom-title`、Codex は `~/.codex/session_index.jsonl`
+  （Codex の自動承認レビュー用スレッド「Guardian review」は表示しない）
+- デスクトップ: Claude はセッション名と同じタイトルの Claude ウィンドウの位置。どちらも、プロンプト送信時に
+  Claude / ChatGPT / ターミナルが最前面ならそのデスクトップを記録
+- Codex アプリはフックを「Settings > Hooks」で承認するまで動かさない
 
 ## 仕組み
 
@@ -31,7 +52,9 @@
 cargo build --release
 .\target\release\vdesk.exe --selftest   # 読み取りだけ確認。preview.html にキーの見た目を書き出す
 pwsh tools\outside.ps1 tools\deploy.ps1 # OpenDeck を止めて exe を差し替え、再起動
-pwsh tools\outside.ps1 tools\deploy.ps1 -ApplyLayout   # キー配置も layout\Default.json で上書き（旧ファイルは .bak-日時 で残る）
+pwsh tools\outside.ps1 tools\deploy.ps1 -ApplyLayout   # layout\ の全プロファイル（Default / AI）も上書き（旧ファイルは .bak-日時 で残る）
+pwsh tools\make-layouts.ps1             # layout\*.json を作り直す
+pwsh tools\install-hooks.ps1            # Claude Code / Codex にフックを追加（-Uninstall で削除）
 ```
 
 ログ: `plugin\local.virtualdesktop.sdPlugin\vdesk.log`（プラグイン）、`%LOCALAPPDATA%\opendeck\logs\OpenDeck.log`（OpenDeck）
