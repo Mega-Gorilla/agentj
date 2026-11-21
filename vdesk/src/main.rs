@@ -28,6 +28,7 @@ mod vd;
 mod winutil;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::Duration;
 
@@ -100,6 +101,31 @@ async fn send(instance: &Instance, svg: String) {
 
 async fn forget(instance: &Instance) {
 	SENT.lock().await.remove(&instance.instance_id);
+}
+
+/// Counts keys appearing, so that only the last of a burst resends.
+static APPEARED: AtomicU64 = AtomicU64::new(0);
+/// How long after the last key appeared the images are sent again.
+const SETTLE: Duration = Duration::from_millis(700);
+
+/// A key appeared: draw, and once the burst of appearing keys (a profile
+/// switch) has settled, send every image once more.
+///
+/// OpenDeck holds its locks for the whole switch and applies queued images
+/// afterwards, drawing each key asynchronously in its window process. Images
+/// that reach one key in quick succession (what OpenDeck had stored, then
+/// ours) can be drawn in the wrong order, leaving the old one on the device
+/// while `SENT` says the new one was sent.
+async fn appeared() {
+	let burst = APPEARED.fetch_add(1, Ordering::Relaxed) + 1;
+	tokio::spawn(async move {
+		tokio::time::sleep(SETTLE).await;
+		if APPEARED.load(Ordering::Relaxed) == burst {
+			log::info!("keys appeared: sending all images again");
+			redraw(true).await;
+		}
+	});
+	redraw_all().await;
 }
 
 fn neighbour(snap: &vd::Snapshot, next: bool) -> Option<(usize, &str)> {
@@ -253,7 +279,15 @@ fn card(s: &agents::View, desktop: Option<usize>, now: u64) -> render::AgentCard
 }
 
 async fn redraw_all() {
+	redraw(false).await;
+}
+
+/// Draw every visible key. `resend` sends images even where nothing changed.
+async fn redraw(resend: bool) {
 	let _guard = REDRAW.lock().await;
+	if resend {
+		SENT.lock().await.clear();
+	}
 	let snap = vd().snapshot();
 
 	let mut seen_per_device: HashMap<String, usize> = HashMap::new();
@@ -324,13 +358,16 @@ impl Action for SlotAction {
 
 	async fn will_appear(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		log::info!("slot appeared: {}", describe(instance));
-		redraw_all().await;
+		appeared().await;
 		Ok(())
 	}
 
+	/// No redraw here. On a profile switch the slots go one by one, and
+	/// renumbering the rest each time would send every one of them a "1"
+	/// just before it goes, to be drawn over the right image on the way
+	/// back. A slot really removed is picked up by the periodic redraw.
 	async fn will_disappear(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		forget(instance).await;
-		redraw_all().await;
 		Ok(())
 	}
 
@@ -351,7 +388,7 @@ impl Action for InfoAction {
 	type Settings = serde_json::Value;
 
 	async fn will_appear(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
-		redraw_all().await;
+		appeared().await;
 		Ok(())
 	}
 
@@ -373,7 +410,7 @@ impl<const NEXT_DIR: bool> Action for StepAction<NEXT_DIR> {
 	type Settings = serde_json::Value;
 
 	async fn will_appear(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
-		redraw_all().await;
+		appeared().await;
 		Ok(())
 	}
 
@@ -398,7 +435,7 @@ impl Action for AgentAction {
 		let lane = lane_of(settings);
 		log::info!("agent slot appeared: {} for {lane:?}", describe(instance));
 		LANES.lock().await.insert(instance.instance_id.clone(), lane);
-		redraw_all().await;
+		appeared().await;
 		Ok(())
 	}
 
@@ -443,7 +480,7 @@ impl<const NEXT_DIR: bool> Action for PageAction<NEXT_DIR> {
 	type Settings = serde_json::Value;
 
 	async fn will_appear(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
-		redraw_all().await;
+		appeared().await;
 		Ok(())
 	}
 
@@ -472,7 +509,7 @@ impl Action for AgentsSummaryAction {
 	type Settings = serde_json::Value;
 
 	async fn will_appear(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
-		redraw_all().await;
+		appeared().await;
 		Ok(())
 	}
 
