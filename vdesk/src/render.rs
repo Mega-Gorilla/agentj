@@ -138,7 +138,7 @@ pub fn agent(card: &AgentCard) -> String {
 			// so it stays dark.
 			State::Done => ("#15803D", "返答済み", "#DCFCE7"),
 			State::Working => ("#000000", "作業中", "#94A3B8"),
-			State::Reviewing => ("#134E4A", "自動審査中", "#5EEAD4"),
+			State::Reviewing => ("#1A1A1A", "自動審査中", "#A1A1AA"),
 			State::Idle => ("#1E293B", "待機中", "#94A3B8"),
 		}
 	};
