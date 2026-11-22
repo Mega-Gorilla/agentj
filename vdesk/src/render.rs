@@ -186,6 +186,18 @@ pub fn agents_summary(attention: usize, done: usize, working: usize) -> String {
 	svg(background, &inner)
 }
 
+/// The refresh key. `removed` is how many closed sessions the press just
+/// cleared, shown for a moment afterwards.
+pub fn refresh(removed: Option<usize>) -> String {
+	let (label, colour) = match removed {
+		None => ("更新".to_owned(), "#94A3B8"),
+		Some(0) => ("消去なし".to_owned(), "#E2E8F0"),
+		Some(n) => (format!("{n}件 消去"), "#4ADE80"),
+	};
+	let inner = format!("{}{}", centered(56.0, 60.0, "#E2E8F0", 400, "↻"), centered(112.0, 22.0, colour, 700, &label));
+	svg("#1E293B", &inner)
+}
+
 /// Previous / next page of AI sessions. `target` is (page, pages) it would go
 /// to, if anywhere; orange when a session over there needs the user.
 pub fn page_arrow(next: bool, target: Option<(usize, usize)>, attention: bool) -> String {

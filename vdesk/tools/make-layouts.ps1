@@ -3,7 +3,7 @@
 # OpenDeck's install folder.
 #
 #   Default:  [1][2][3][4][5] / [6][7][8][9][10] / [◀][n/N][▶][ ][→AI]
-#   AI:       [Claude x5] / [Codex x5] / [→Default][ ][◀][summary][▶]
+#   AI:       [Claude x5] / [Codex x5] / [→Default][refresh][◀][summary][▶]
 #             (AI session keys carry settings.tool; the k-th key of each row is
 #             column k, one column per desktop with sessions; ◀ ▶ page through
 #             the columns when they do not fit)
@@ -21,6 +21,7 @@ $defs = @{
 	agents = @{ name = 'AI Summary'; multi = $false; tip = '要対応・返答済・作業中の数。押すと一番待たせているセッションのデスクトップへ' }
 	agentprev = @{ name = 'AI Page Previous'; multi = $false; icon = 'prev'; tip = 'AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙' }
 	agentnext = @{ name = 'AI Page Next'; multi = $false; icon = 'next'; tip = 'AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙' }
+	agentrefresh = @{ name = 'AI Refresh'; multi = $false; icon = 'refresh'; tip = '名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す' }
 }
 
 function New-OwnKey([string]$kind, [int]$pos, $settings = [ordered]@{}) {
@@ -76,6 +77,6 @@ for ($i = 0; $i -lt 10; $i++) {
 	$ai += , (New-OwnKey 'agent' $i ([ordered]@{ tool = $(if ($i -lt 5) { 'claude' } else { 'codex' }) }))
 }
 $ai += , (New-SwitchKey 10 'Default' 'to-desk')
-$ai += , $null
+$ai += , (New-OwnKey 'agentrefresh' 11)
 $ai += , (New-OwnKey 'agentprev' 12); $ai += , (New-OwnKey 'agents' 13); $ai += , (New-OwnKey 'agentnext' 14)
 Save-Profile 'AI' $ai

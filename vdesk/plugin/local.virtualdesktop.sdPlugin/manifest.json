@@ -75,6 +75,15 @@
 			"SupportedInMultiActions": false
 		},
 		{
+			"UUID": "local.virtualdesktop.agentrefresh",
+			"Name": "AI Refresh",
+			"Tooltip": "名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す",
+			"Icon": "imgs/refresh",
+			"States": [{ "Image": "imgs/refresh", "ShowTitle": false }],
+			"Controllers": ["Keypad"],
+			"SupportedInMultiActions": false
+		},
+		{
 			"UUID": "local.virtualdesktop.agentnext",
 			"Name": "AI Page Next",
 			"Tooltip": "AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙",

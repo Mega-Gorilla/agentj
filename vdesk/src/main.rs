@@ -15,6 +15,8 @@
 //!   make columns, one desktop per column, Claude above Codex.
 //! - AI Page Previous / Next: when the columns do not fit, page through them.
 //!   Orange when a session on a page that way needs the user.
+//! - AI Refresh: re-read names and windows now, remove sessions that look
+//!   closed, and send every image again.
 //! - AI Summary: how many need you / have answered / are working. Press to
 //!   go to the session that needs you most.
 //!
@@ -43,6 +45,7 @@ const AGENT: ActionUuid = "local.virtualdesktop.agent";
 const AGENTS: ActionUuid = "local.virtualdesktop.agents";
 const AGENT_PREV: ActionUuid = "local.virtualdesktop.agentprev";
 const AGENT_NEXT: ActionUuid = "local.virtualdesktop.agentnext";
+const AGENT_REFRESH: ActionUuid = "local.virtualdesktop.agentrefresh";
 
 static VD: OnceLock<vd::Handle> = OnceLock::new();
 
@@ -59,6 +62,10 @@ static REDRAW: Mutex<()> = Mutex::const_new(());
 static LANES: LazyLock<Mutex<HashMap<InstanceId, Option<agents::Tool>>>> = LazyLock::new(Default::default);
 /// The page of AI sessions each device shows.
 static PAGE: LazyLock<Mutex<HashMap<String, usize>>> = LazyLock::new(Default::default);
+/// When the refresh key was last pressed and how many sessions it removed.
+static SWEPT: Mutex<Option<(std::time::Instant, usize)>> = Mutex::const_new(None);
+/// How long the refresh key shows what it did.
+const SWEPT_SHOWN: Duration = Duration::from_secs(5);
 
 fn lane_of(settings: &serde_json::Value) -> Option<agents::Tool> {
 	match settings.get("tool").and_then(serde_json::Value::as_str)?.to_ascii_lowercase().as_str() {
@@ -331,6 +338,10 @@ async fn redraw(resend: bool) {
 			send(&key, render::page_arrow(next, target, attention)).await;
 		}
 	}
+	let swept = SWEPT.lock().await.filter(|(at, _)| at.elapsed() < SWEPT_SHOWN).map(|(_, removed)| removed);
+	for key in visible_instances(AGENT_REFRESH).await {
+		send(&key, render::refresh(swept)).await;
+	}
 	let summary_keys = visible_instances(AGENTS).await;
 	if !summary_keys.is_empty() {
 		let count = |f: &dyn Fn(&agents::View) -> bool| sessions.iter().filter(|(s, _)| f(s)).count();
@@ -502,6 +513,38 @@ impl<const NEXT_DIR: bool> Action for PageAction<NEXT_DIR> {
 	}
 }
 
+/// Re-read everything now and clear away sessions that look closed.
+struct RefreshAction;
+#[async_trait]
+impl Action for RefreshAction {
+	const UUID: ActionUuid = AGENT_REFRESH;
+	type Settings = serde_json::Value;
+
+	async fn will_appear(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		appeared().await;
+		Ok(())
+	}
+
+	async fn will_disappear(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		forget(instance).await;
+		Ok(())
+	}
+
+	async fn key_up(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		vd().refresh();
+		let removed = agents::sweep().await;
+		log::info!("refresh: {removed} closed session(s) removed");
+		*SWEPT.lock().await = Some((std::time::Instant::now(), removed));
+		redraw(true).await;
+		// Put the key's own face back once the result has been shown.
+		tokio::spawn(async {
+			tokio::time::sleep(SWEPT_SHOWN).await;
+			redraw_all().await;
+		});
+		Ok(())
+	}
+}
+
 struct AgentsSummaryAction;
 #[async_trait]
 impl Action for AgentsSummaryAction {
@@ -611,7 +654,7 @@ fn selftest() -> std::process::ExitCode {
 		sample(Tool::Codex, "DoveBar", State::Permission, None, 40_000),
 	];
 	// Same as layout/AI.json: Claude row, Codex row, then
-	// [→Default][ ][◀][summary][▶].
+	// [→Default][refresh][◀][summary][▶].
 	let lanes: Vec<Option<Tool>> = [Some(Tool::Claude); 5].into_iter().chain([Some(Tool::Codex); 5]).collect();
 	let placed: Vec<(Tool, Option<usize>)> = samples.iter().map(|s| (s.tool, s.desktop)).collect();
 	let Pages { keys, page_of } = paginate(&lanes, &placed);
@@ -626,7 +669,7 @@ fn selftest() -> std::process::ExitCode {
 			})
 		};
 		ai.push(render::empty()); // the Starter Pack switch to Default
-		ai.push(render::empty());
+		ai.push(render::refresh((page > 0).then_some(2)));
 		ai.push(render::page_arrow(false, page.checked_sub(1).map(|p| (p, pages)), attention(false)));
 		ai.push(render::agents_summary(2, 2, 2));
 		ai.push(render::page_arrow(true, (page + 1 < pages).then_some((page + 1, pages)), attention(true)));
@@ -665,6 +708,7 @@ async fn main() -> std::process::ExitCode {
 	register_action(AgentsSummaryAction).await;
 	register_action(PageAction::<false>).await;
 	register_action(PageAction::<true>).await;
+	register_action(RefreshAction).await;
 
 	tokio::spawn(agents::serve());
 	tokio::spawn(async {

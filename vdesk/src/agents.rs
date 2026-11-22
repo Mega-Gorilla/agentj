@@ -46,6 +46,9 @@ const NAME_REFRESH_MS: u64 = 10_000;
 const REVIEW_OVERDUE_MS: u64 = 2 * 60 * 1000;
 /// How long the end of a session is remembered, to drop its late events.
 const ENDED_KEEP_MS: u64 = 60 * 60 * 1000;
+/// The refresh key removes a Codex session with no known desktop once it has
+/// been quiet for this long.
+const SWEEP_IDLE_MS: u64 = 30 * 60 * 1000;
 /// Finished calls remembered per session, for requests that arrive after them.
 const FINISHED_KEEP: usize = 16;
 /// Codex names its automatic approval-review subagents like this.
@@ -499,6 +502,40 @@ impl Tracker {
 		any
 	}
 
+	/// Remove sessions that look closed, for the refresh key. Returns their
+	/// labels.
+	///
+	/// A closed session does not always send SessionEnd. Sessions that need
+	/// the user or are at work stay whatever the windows say. Of the rest:
+	/// - Claude goes when no window is titled with its name and no untitled
+	///   "Claude" window is on its desktop.
+	/// - Codex windows all look alike, so it goes when its desktop has no
+	///   ChatGPT window left, or, with no desktop recorded, when nothing has
+	///   happened in it for `SWEEP_IDLE_MS`.
+	///
+	/// A session removed by mistake comes back with its next hook event.
+	fn sweep(&mut self, now: u64, codex_auto_review: bool, claude: &[WindowInfo], codex: &[WindowInfo]) -> Vec<String> {
+		let closed = |s: &Session| {
+			let state = s.shown(now, codex_auto_review).0;
+			if state.needs_user() || state == State::Reviewing || (state == State::Working && !s.is_stale(now)) {
+				return false;
+			}
+			match s.tool {
+				Tool::Claude => {
+					let own = s.name.as_deref().is_some_and(|n| claude.iter().any(|w| w.title == n));
+					let untitled = s.desktop.is_some() && claude.iter().any(|w| w.title == APP_TITLE && w.desktop == s.desktop);
+					!own && !untitled
+				}
+				Tool::Codex => match &s.desktop {
+					Some(desktop) => !codex.iter().any(|w| w.desktop.as_ref() == Some(desktop)),
+					None => now.saturating_sub(s.last.max(s.since)) > SWEEP_IDLE_MS,
+				},
+			}
+		};
+		let gone: Vec<String> = self.sessions.iter().filter(|(_, s)| closed(s)).map(|(k, _)| k.clone()).collect();
+		gone.iter().filter_map(|k| self.sessions.remove(k)).map(|s| format!("{:?} {}", s.tool, s.label())).collect()
+	}
+
 	/// Forget sessions and session ends that are too old. Returns whether a
 	/// session went.
 	fn prune(&mut self, now: u64) -> bool {
@@ -713,6 +750,26 @@ fn auto_review_in(config: &str) -> bool {
 
 fn codex_auto_review() -> bool {
 	std::fs::read_to_string(codex_home().join("config.toml")).is_ok_and(|text| auto_review_in(&text))
+}
+
+/// The refresh key: re-read names and windows now, then remove the sessions
+/// that look closed (see `Tracker::sweep`). Returns how many went.
+pub async fn sweep() -> usize {
+	for s in TRACKER.lock().unwrap().sessions.values_mut() {
+		s.name_checked = 0;
+	}
+	maintain().await;
+	let windows = tokio::task::spawn_blocking(|| (winutil::app_windows(&["claude"]), winutil::app_windows(&["ChatGPT", "Codex"]))).await;
+	let Ok((claude, codex)) = windows else { return 0 };
+	let auto_review = CODEX_AUTO_REVIEW.load(Ordering::Relaxed);
+	let gone = TRACKER.lock().unwrap().sweep(now_ms(), auto_review, &claude, &codex);
+	for label in &gone {
+		log::info!("{label}: looks closed, removed");
+	}
+	if !gone.is_empty() {
+		changed();
+	}
+	gone.len()
 }
 
 /// Periodic work: refresh names, place Claude sessions by their window, drop
@@ -1020,6 +1077,54 @@ mod tests {
 		assert_eq!(split.namesake_desktop(&codex), None);
 		let only_codex = tracker(vec![named(Tool::Codex, "y", "GMK01", Some("D3"))]);
 		assert_eq!(only_codex.namesake_desktop(&codex), None);
+	}
+
+	// ---- refresh key
+
+	fn chatgpt(desktop: &str) -> WindowInfo {
+		WindowInfo { process: "ChatGPT".to_owned(), title: "ChatGPT".to_owned(), desktop: Some(desktop.to_owned()) }
+	}
+
+	/// A session that has answered and is waiting to be read.
+	fn done(tool: Tool, id: &str, name: &str, desktop: Option<&str>) -> Session {
+		Session { state: State::Done, since: 1_000, last: 1_000, ..named(tool, id, name, desktop) }
+	}
+
+	#[test]
+	fn refresh_removes_claude_sessions_whose_window_is_gone() {
+		let mut t = tracker(vec![
+			done(Tool::Claude, "a", "GMK01", Some("D3")),
+			done(Tool::Claude, "b", "Closed", Some("D4")),
+			done(Tool::Claude, "c", "Deck", Some("D1")), // its window is the untitled one
+		]);
+		let gone = t.sweep(2_000, false, &[window("GMK01", "D3"), window(APP_TITLE, "D1")], &[]);
+		assert_eq!(gone, vec!["Claude Closed"]);
+		assert_eq!(t.sessions.len(), 2);
+	}
+
+	#[test]
+	fn refresh_keeps_sessions_that_need_the_user_or_are_working() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 1_000, "a", 1), ask(1_001, 1)]);
+		let mut working = named(Tool::Codex, "w", "Busy", Some("D9"));
+		working.state = State::Working;
+		working.last = 1_500;
+		t.sessions.insert(key(Tool::Codex, "w"), working);
+		assert!(t.sweep(2_000, false, &[], &[]).is_empty());
+		// working with no sign of life for long enough is fair game
+		assert_eq!(t.sweep(1_500 + STALE_MS + 1, false, &[], &[]).len(), 1);
+	}
+
+	#[test]
+	fn refresh_judges_codex_by_its_desktop_or_by_quiet_time() {
+		let mut t = tracker(vec![
+			done(Tool::Codex, "a", "Here", Some("D3")),
+			done(Tool::Codex, "b", "WindowGone", Some("D4")),
+			done(Tool::Codex, "c", "NoDesktop", None),
+		]);
+		assert_eq!(t.sweep(2_000, false, &[], &[chatgpt("D3")]), vec!["Codex WindowGone"]);
+		assert_eq!(t.sweep(1_000 + SWEEP_IDLE_MS + 1, false, &[], &[chatgpt("D3")]), vec!["Codex NoDesktop"]);
+		assert_eq!(t.sessions.len(), 1);
 	}
 
 	// ---- files

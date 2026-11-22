@@ -386,7 +386,39 @@
       },
       "children": null
     },
-    null,
+    {
+      "action": {
+        "name": "AI Refresh",
+        "uuid": "local.virtualdesktop.agentrefresh",
+        "plugin": "local.virtualdesktop.sdPlugin",
+        "tooltip": "名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す",
+        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/refresh.svg",
+        "disable_automatic_states": false,
+        "visible_in_action_list": true,
+        "supported_in_multi_actions": false,
+        "property_inspector": "",
+        "controllers": [
+          "Keypad"
+        ],
+        "encoder": null,
+        "states": [
+          {
+            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/refresh.svg",
+            "show": false
+          }
+        ]
+      },
+      "context": "Keypad.11.0",
+      "states": [
+        {
+          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/refresh.svg",
+          "show": false
+        }
+      ],
+      "current_state": 0,
+      "settings": {},
+      "children": null
+    },
     {
       "action": {
         "name": "AI Page Previous",
