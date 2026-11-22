@@ -139,14 +139,16 @@ pub fn agent(card: &AgentCard) -> String {
 			State::Done => ("#15803D", "返答済み", "#DCFCE7"),
 			State::Working => ("#000000", "作業中", "#94A3B8"),
 			State::Reviewing => ("#1A1A1A", "自動審査中", "#A1A1AA"),
-			State::Idle => ("#0D0D0D", "待機中", "#71717A"),
+			// Green like Done: a session that is open and free to take a prompt.
+			// (A resumed session is Idle even if its last answer is unread.)
+			State::Idle => ("#15803D", "待機中", "#DCFCE7"),
 		}
 	};
 	let (tool, mut tool_colour) = match card.tool {
 		Tool::Claude => ("Claude", "#F4A98A"),
 		Tool::Codex => ("Codex", "#9FE7C9"),
 	};
-	if !card.stale && !matches!(card.state, State::Working | State::Reviewing | State::Idle) {
+	if !card.stale && !matches!(card.state, State::Working | State::Reviewing) {
 		// The tool colours do not read well on the strong state colours.
 		tool_colour = "#FFFFFF";
 	}
