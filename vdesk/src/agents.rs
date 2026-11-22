@@ -14,9 +14,11 @@
 //!
 //! Names come from the agents' own files (Claude transcript `custom-title`,
 //! Codex `session_index.jsonl`), and the virtual desktop from either the
-//! Claude window whose title is the session name, or the desktop that was
-//! showing when the user submitted a prompt. A Codex thread with neither
-//! borrows the desktop of the Claude session with the same name.
+//! Claude window whose title is the session name, or the window that was in
+//! front when the user sent a prompt (`front`). A Codex thread with neither
+//! borrows the desktop of the Claude session with the same name. An ended
+//! session is kept for a while, unseen, so that a resumed one still has its
+//! name and desktop.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -44,8 +46,10 @@ const NAME_REFRESH_MS: u64 = 10_000;
 /// shown as waiting for the user after all: the thread may not be using the
 /// reviewer the config file names.
 const REVIEW_OVERDUE_MS: u64 = 2 * 60 * 1000;
-/// How long the end of a session is remembered, to drop its late events.
-const ENDED_KEEP_MS: u64 = 60 * 60 * 1000;
+/// Per tool: how long before its hook a prompt was sent, roughly, and how far
+/// back from the hook to look at all for the window it was typed into. Codex
+/// runs the hook 1.5 to 2 s after the prompt is sent.
+const PROMPT_TIMING_MS: [(Tool, u64, u64); 2] = [(Tool::Claude, 0, 1_500), (Tool::Codex, 1_800, 5_000)];
 /// The refresh key removes a Codex session with no known desktop once it has
 /// been quiet for this long.
 const SWEEP_IDLE_MS: u64 = 30 * 60 * 1000;
@@ -161,6 +165,11 @@ struct Session {
 	open: Vec<Call>,
 	#[serde(default)]
 	finished: Vec<Finished>,
+	/// When the session ended (or was cleared away by the refresh key). It
+	/// is kept, unseen, so that events from before then are dropped and so
+	/// that its name and desktop are still known if it is resumed.
+	#[serde(default)]
+	ended: Option<u64>,
 	#[serde(skip)]
 	name_checked: u64,
 	/// How far the transcript has been searched for a title.
@@ -185,9 +194,18 @@ impl Session {
 			asks: Vec::new(),
 			open: Vec::new(),
 			finished: Vec::new(),
+			ended: None,
 			name_checked: 0,
 			title_offset: 0,
 		}
+	}
+
+	/// The session is over as of `ts`; see `ended`.
+	fn end(&mut self, ts: u64) {
+		self.ended = Some(ts);
+		self.asks.clear();
+		self.open.clear();
+		self.finished.clear();
 	}
 
 	fn label(&self) -> String {
@@ -206,7 +224,7 @@ impl Session {
 	}
 
 	fn visible(&self) -> bool {
-		!self.hidden && (self.name.is_some() || self.prompted)
+		self.ended.is_none() && !self.hidden && (self.name.is_some() || self.prompted)
 	}
 
 	/// The state to show and when it began. An open approval request wins
@@ -354,42 +372,54 @@ fn key(tool: Tool, session_id: &str) -> String {
 /// All sessions and the rules that move them. No I/O.
 #[derive(Default)]
 struct Tracker {
+	/// Live sessions, and ended ones kept for a while (`Session::ended`).
 	sessions: HashMap<String, Session>,
-	/// When sessions ended, so that their late events do not bring them back.
-	ended: HashMap<String, u64>,
 }
 
 impl Tracker {
 	/// Apply one hook event. Returns whether anything may have changed.
-	fn apply(&mut self, tool: Tool, mut event: Event, foreground: Option<WindowInfo>, codex_auto_review: bool) -> bool {
+	///
+	/// `recent` is the windows that were in front around the time of a
+	/// prompt, likeliest first (see `front::around`).
+	fn apply(&mut self, tool: Tool, mut event: Event, recent: &[WindowInfo], codex_auto_review: bool) -> bool {
 		// Codex reports its subagents with agent_*, under the parent's session
 		// id. Claude reports subagent work inside the parent session, which is fine.
 		if tool == Tool::Codex && (event.agent_id.is_some() || event.agent_type.is_some()) {
 			return false;
 		}
 		let key = key(tool, &event.session_id);
-		if self.ended.get(&key).is_some_and(|&ended| event.ts <= ended) {
+		if self.sessions.get(&key).and_then(|s| s.ended).is_some_and(|ended| event.ts <= ended) {
 			return false; // from before the session ended
 		}
 		if event.hook_event_name == "SessionEnd" {
-			if let Some(s) = self.sessions.get(&key) {
-				if event.ts < s.last {
-					log::info!("{tool:?} {}: an old SessionEnd arrived late, ignored", s.label());
-					return false; // the session has gone on since
-				}
-				log::info!("{tool:?} {}: ended", s.label());
+			let session = self.sessions.entry(key).or_insert_with(|| Session::new(tool, &event.session_id, event.ts));
+			if event.ts < session.last {
+				log::info!("{tool:?} {}: an old SessionEnd arrived late, ignored", session.label());
+				return false; // the session has gone on since
 			}
-			self.sessions.remove(&key);
-			self.ended.insert(key, event.ts);
+			if session.ended.is_none() {
+				log::info!("{tool:?} {}: ended", session.label());
+			}
+			session.end(event.ts);
 			return true;
 		}
-		self.ended.remove(&key); // resumed
 
 		// A window titled with another of this tool's sessions is that
 		// session's, not this one's.
-		let others: Vec<String> =
-			self.sessions.iter().filter(|(k, s)| **k != key && s.tool == tool).filter_map(|(_, s)| s.name.clone()).collect();
+		let others: Vec<String> = self
+			.sessions
+			.iter()
+			.filter(|(k, s)| **k != key && s.tool == tool && s.ended.is_none())
+			.filter_map(|(_, s)| s.name.clone())
+			.collect();
 		let session = self.sessions.entry(key).or_insert_with(|| Session::new(tool, &event.session_id, event.ts));
+		if let Some(ended) = session.ended.take() {
+			// Resumed: a fresh start, but its name and desktop are still good.
+			log::info!("{tool:?} {}: resumed", session.label());
+			session.state = State::Idle;
+			session.since = event.ts;
+			session.last = ended;
+		}
 		let before = session.shown(event.ts, codex_auto_review).0;
 
 		if let Some(cwd) = event.cwd.take() {
@@ -409,13 +439,23 @@ impl Tracker {
 			// well be on another desktop.
 			let busy = matches!(session.state, State::Working | State::Input) || !session.asks.is_empty();
 			let queued = busy && !session.is_stale(event.ts);
-			match foreground {
-				Some(fg) if queued => log::info!("{tool:?} {}: queued prompt, desktop of {:?} not used", session.label(), fg.title),
-				Some(fg) if others.contains(&fg.title) => {
-					log::info!("{tool:?} {}: front window {:?} is another session's, not used", session.label(), fg.title)
+			// The hook comes a moment after the prompt was sent (about 2 s for
+			// Codex), and the user may have clicked another window since, so
+			// any window in front lately that the prompt could have been typed
+			// into will do.
+			let typed_in = recent.iter().find(|w| typed_from(tool, &w.process) && w.desktop.is_some() && !others.contains(&w.title));
+			match (typed_in, recent.first()) {
+				(_, Some(front)) if queued => {
+					log::info!("{tool:?} {}: queued prompt, desktop of {:?} not used", session.label(), front.title)
 				}
-				Some(fg) if typed_from(tool, &fg.process) && fg.desktop.is_some() => session.desktop = fg.desktop,
-				_ => {}
+				(Some(window), _) => session.desktop = window.desktop.clone(),
+				(None, Some(front)) => log::info!(
+					"{tool:?} {}: no window of its own in front lately ({:?} {:?}), desktop not recorded",
+					session.label(),
+					front.process,
+					front.title
+				),
+				(None, None) => {}
 			}
 		}
 
@@ -463,7 +503,7 @@ impl Tracker {
 		let mut desktops = self
 			.sessions
 			.values()
-			.filter(|s| s.tool == Tool::Claude && !s.hidden)
+			.filter(|s| s.tool == Tool::Claude && !s.hidden && s.ended.is_none())
 			.filter(|s| s.name.as_deref().is_some_and(|n| n.trim().eq_ignore_ascii_case(name)))
 			.filter_map(|s| s.desktop.as_deref());
 		let first = desktops.next()?;
@@ -477,7 +517,7 @@ impl Tracker {
 		// A window titled with the session name says where the session is,
 		// unless windows with that title sit on different desktops: then it
 		// is not known which is whose, and what is recorded stays.
-		for s in self.sessions.values_mut().filter(|s| s.tool == Tool::Claude) {
+		for s in self.sessions.values_mut().filter(|s| s.tool == Tool::Claude && s.ended.is_none()) {
 			let Some(name) = s.name.as_deref() else { continue };
 			let mut desktops = windows.iter().filter(|w| w.title == name).filter_map(|w| w.desktop.as_ref());
 			let Some(first) = desktops.next() else { continue };
@@ -513,11 +553,12 @@ impl Tracker {
 	///   ChatGPT window left, or, with no desktop recorded, when nothing has
 	///   happened in it for `SWEEP_IDLE_MS`.
 	///
-	/// A session removed by mistake comes back with its next hook event.
+	/// They are marked ended, not dropped: one cleared by mistake comes back
+	/// with its next hook event, name and desktop intact.
 	fn sweep(&mut self, now: u64, codex_auto_review: bool, claude: &[WindowInfo], codex: &[WindowInfo]) -> Vec<String> {
 		let closed = |s: &Session| {
 			let state = s.shown(now, codex_auto_review).0;
-			if state.needs_user() || state == State::Reviewing || (state == State::Working && !s.is_stale(now)) {
+			if s.ended.is_some() || state.needs_user() || state == State::Reviewing || (state == State::Working && !s.is_stale(now)) {
 				return false;
 			}
 			match s.tool {
@@ -532,23 +573,27 @@ impl Tracker {
 				},
 			}
 		};
-		let gone: Vec<String> = self.sessions.iter().filter(|(_, s)| closed(s)).map(|(k, _)| k.clone()).collect();
-		gone.iter().filter_map(|k| self.sessions.remove(k)).map(|s| format!("{:?} {}", s.tool, s.label())).collect()
+		let mut gone = Vec::new();
+		for s in self.sessions.values_mut().filter(|s| closed(s)) {
+			gone.push(format!("{:?} {}", s.tool, s.label()));
+			s.end(now);
+		}
+		gone
 	}
 
-	/// Forget sessions and session ends that are too old. Returns whether a
-	/// session went.
+	/// Forget sessions, live or ended, that are too old. Returns whether a
+	/// live one went.
 	fn prune(&mut self, now: u64) -> bool {
-		let before = self.sessions.len();
-		self.sessions.retain(|_, s| now.saturating_sub(s.last.max(s.since)) < FORGET_MS);
-		self.ended.retain(|_, ended| now.saturating_sub(*ended) < ENDED_KEEP_MS);
-		self.sessions.len() != before
+		let live = |sessions: &HashMap<String, Session>| sessions.values().filter(|s| s.ended.is_none()).count();
+		let before = live(&self.sessions);
+		self.sessions.retain(|_, s| now.saturating_sub(s.last.max(s.since).max(s.ended.unwrap_or(0))) < FORGET_MS);
+		live(&self.sessions) != before
 	}
 }
 
 // ---------------------------------------------------------------- shared state
 
-static TRACKER: LazyLock<Mutex<Tracker>> = LazyLock::new(|| Mutex::new(Tracker { sessions: load(), ended: HashMap::new() }));
+static TRACKER: LazyLock<Mutex<Tracker>> = LazyLock::new(|| Mutex::new(Tracker { sessions: load() }));
 static CHANGED: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
 /// Whether Codex sends approval requests to its automatic reviewer.
 static CODEX_AUTO_REVIEW: LazyLock<AtomicBool> = LazyLock::new(|| AtomicBool::new(codex_auto_review()));
@@ -571,12 +616,22 @@ pub fn visible() -> Vec<View> {
 	TRACKER.lock().unwrap().views(now_ms(), CODEX_AUTO_REVIEW.load(Ordering::Relaxed))
 }
 
-fn handle(tool: Tool, mut event: Event, foreground: Option<WindowInfo>) {
+fn handle(tool: Tool, mut event: Event) {
 	if event.ts == 0 {
 		event.ts = now_ms();
 	}
+	// For a prompt: the windows it may have been typed into, likeliest first.
+	let recent = if event.hook_event_name == "UserPromptSubmit" {
+		let (delay, within) = PROMPT_TIMING_MS.iter().find(|(t, ..)| *t == tool).map_or((0, 0), |(_, d, w)| (*d, *w));
+		let recent = crate::front::around(event.ts.saturating_sub(delay), event.ts.saturating_sub(within));
+		let seen: Vec<_> = recent.iter().map(|w| (w.process.as_str(), w.title.as_str())).collect();
+		log::info!("{tool:?} prompt, in front around then (likeliest first): {seen:?}");
+		recent
+	} else {
+		Vec::new()
+	};
 	let auto_review = CODEX_AUTO_REVIEW.load(Ordering::Relaxed);
-	let any = TRACKER.lock().unwrap().apply(tool, event, foreground, auto_review);
+	let any = TRACKER.lock().unwrap().apply(tool, event, &recent, auto_review);
 	if any {
 		changed();
 	}
@@ -660,17 +715,7 @@ async fn connection(mut socket: TcpStream) -> std::io::Result<()> {
 		log::debug!("ignored a hook body that did not parse");
 		return Ok(());
 	};
-	let foreground = if event.hook_event_name == "UserPromptSubmit" {
-		let fg = tokio::task::spawn_blocking(winutil::foreground).await.ok().flatten();
-		match &fg {
-			Some(w) => log::info!("{tool:?} prompt typed into {:?} ({:?}) on desktop {:?}", w.process, w.title, w.desktop),
-			None => log::info!("{tool:?} prompt: no foreground window"),
-		}
-		fg
-	} else {
-		None
-	};
-	handle(tool, event, foreground);
+	handle(tool, event);
 	Ok(())
 }
 
@@ -779,7 +824,7 @@ pub async fn maintain() {
 	let (claude_due, codex_due, removed) = {
 		let mut tracker = TRACKER.lock().unwrap();
 		let removed = tracker.prune(now);
-		let due = |s: &Session| now.saturating_sub(s.name_checked) >= NAME_REFRESH_MS;
+		let due = |s: &Session| s.ended.is_none() && now.saturating_sub(s.name_checked) >= NAME_REFRESH_MS;
 		let claude: Vec<(String, String, u64)> = tracker
 			.sessions
 			.iter()
@@ -848,7 +893,7 @@ fn load() -> HashMap<String, Session> {
 		.and_then(|p| std::fs::read(p).ok())
 		.and_then(|b| serde_json::from_slice(&b).ok())
 		.unwrap_or_default();
-	sessions.retain(|_, s| now.saturating_sub(s.last.max(s.since)) < FORGET_MS);
+	sessions.retain(|_, s| now.saturating_sub(s.last.max(s.since).max(s.ended.unwrap_or(0))) < FORGET_MS);
 	for s in sessions.values_mut() {
 		// Files from before approvals were tracked per call kept them here.
 		if matches!(s.state, State::Permission | State::Reviewing) {
@@ -887,8 +932,13 @@ mod tests {
 
 	fn feed(tracker: &mut Tracker, tool: Tool, auto_review: bool, events: Vec<Event>) {
 		for event in events {
-			tracker.apply(tool, event, None, auto_review);
+			tracker.apply(tool, event, &[], auto_review);
 		}
+	}
+
+	/// Sessions that are not ended.
+	fn live(tracker: &Tracker) -> usize {
+		tracker.sessions.values().filter(|s| s.ended.is_none()).count()
 	}
 
 	fn state(tracker: &Tracker, tool: Tool, now: u64, auto_review: bool) -> State {
@@ -904,7 +954,7 @@ mod tests {
 	}
 
 	fn tracker(list: Vec<Session>) -> Tracker {
-		Tracker { sessions: list.into_iter().map(|s| (key(s.tool, &s.id), s)).collect(), ended: HashMap::new() }
+		Tracker { sessions: list.into_iter().map(|s| (key(s.tool, &s.id), s)).collect() }
 	}
 
 	// ---- approvals
@@ -995,10 +1045,30 @@ mod tests {
 	fn late_events_do_not_bring_an_ended_session_back() {
 		let mut t = Tracker::default();
 		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 10), ev("SessionEnd", 30), tool("PostToolUse", 20, "a", 1)]);
-		assert!(t.sessions.is_empty());
+		assert_eq!(live(&t), 0);
+		assert!(t.views(31, false).is_empty());
 		// a later event is the session being resumed
 		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 40)]);
 		assert_eq!(state(&t, Tool::Claude, 41, false), State::Working);
+		assert_eq!(live(&t), 1);
+	}
+
+	#[test]
+	fn a_resumed_session_still_knows_its_name_and_desktop() {
+		let mut t = tracker(vec![named(Tool::Codex, S, "Fujitu01", Some("D5"))]);
+		feed(&mut t, Tool::Codex, false, vec![ev("UserPromptSubmit", 10), ev("SessionEnd", 20)]);
+		assert!(t.views(21, false).is_empty());
+		// e.g. the app was restarted; no prompt has been typed yet
+		feed(&mut t, Tool::Codex, false, vec![ev("SessionStart", 30)]);
+		let views = t.views(31, false);
+		assert_eq!((views[0].label.as_str(), views[0].desktop.as_deref(), views[0].state), ("Fujitu01", Some("D5"), State::Idle));
+	}
+
+	#[test]
+	fn an_end_before_anything_else_still_drops_late_events() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![ev("SessionEnd", 30), ev("UserPromptSubmit", 20)]);
+		assert_eq!(live(&t), 0);
 	}
 
 	#[test]
@@ -1013,8 +1083,8 @@ mod tests {
 		let mut t = Tracker::default();
 		feed(&mut t, Tool::Codex, false, vec![ev("UserPromptSubmit", 10)]);
 		let sub = Event { agent_type: Some("worker".to_owned()), ..ev("SessionEnd", 20) };
-		assert!(!t.apply(Tool::Codex, sub, None, false));
-		assert_eq!(t.sessions.len(), 1);
+		assert!(!t.apply(Tool::Codex, sub, &[], false));
+		assert_eq!(live(&t), 1);
 	}
 
 	// ---- desktops
@@ -1048,15 +1118,29 @@ mod tests {
 	fn a_prompt_records_the_desktop_only_when_typed_there_now() {
 		let prompt = |ts| ev("UserPromptSubmit", ts);
 		let mut t = tracker(vec![named(Tool::Claude, "other", "Other", None)]);
-		t.apply(Tool::Claude, prompt(10), Some(window("Claude", "D1")), false);
+		t.apply(Tool::Claude, prompt(10), &[window("Claude", "D1")], false);
 		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop.as_deref(), Some("D1"));
 		// delivered from the queue while the session is busy
-		t.apply(Tool::Claude, prompt(20), Some(window("Claude", "D2")), false);
+		t.apply(Tool::Claude, prompt(20), &[window("Claude", "D2")], false);
 		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop.as_deref(), Some("D1"));
 		// another session's window is in front
-		t.apply(Tool::Claude, ev("Stop", 30), None, false);
-		t.apply(Tool::Claude, prompt(40), Some(window("Other", "D3")), false);
+		t.apply(Tool::Claude, ev("Stop", 30), &[], false);
+		t.apply(Tool::Claude, prompt(40), &[window("Other", "D3")], false);
 		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop.as_deref(), Some("D1"));
+	}
+
+	#[test]
+	fn a_prompt_is_placed_by_a_window_it_could_have_been_typed_into() {
+		// Codex's hook came after the user had clicked the Claude window:
+		// the ChatGPT window that was in front just before is the one.
+		let mut t = Tracker::default();
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 10), &[window("Fujitu01", "D2"), chatgpt("D5")], false);
+		assert_eq!(t.sessions[&key(Tool::Codex, S)].desktop.as_deref(), Some("D5"));
+		// nothing it could have been typed into: not recorded
+		let firefox = WindowInfo { process: "firefox".to_owned(), title: "x".to_owned(), desktop: Some("D1".to_owned()) };
+		let mut t = Tracker::default();
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 10), &[firefox, window("Fujitu01", "D2")], false);
+		assert_eq!(t.sessions[&key(Tool::Codex, S)].desktop, None);
 	}
 
 	#[test]
@@ -1099,7 +1183,19 @@ mod tests {
 		]);
 		let gone = t.sweep(2_000, false, &[window("GMK01", "D3"), window(APP_TITLE, "D1")], &[]);
 		assert_eq!(gone, vec!["Claude Closed"]);
-		assert_eq!(t.sessions.len(), 2);
+		assert_eq!(live(&t), 2);
+		// pressing again finds nothing more
+		assert!(t.sweep(2_001, false, &[window("GMK01", "D3"), window(APP_TITLE, "D1")], &[]).is_empty());
+	}
+
+	#[test]
+	fn a_session_cleared_by_mistake_comes_back_with_its_desktop() {
+		let mut t = tracker(vec![done(Tool::Codex, S, "Here", Some("D4"))]);
+		assert_eq!(t.sweep(2_000, false, &[], &[]).len(), 1);
+		assert!(t.views(2_001, false).is_empty());
+		feed(&mut t, Tool::Codex, false, vec![tool("PreToolUse", 3_000, "a", 1)]);
+		let views = t.views(3_001, false);
+		assert_eq!((views[0].desktop.as_deref(), views[0].state), (Some("D4"), State::Working));
 	}
 
 	#[test]
@@ -1124,7 +1220,7 @@ mod tests {
 		]);
 		assert_eq!(t.sweep(2_000, false, &[], &[chatgpt("D3")]), vec!["Codex WindowGone"]);
 		assert_eq!(t.sweep(1_000 + SWEEP_IDLE_MS + 1, false, &[], &[chatgpt("D3")]), vec!["Codex NoDesktop"]);
-		assert_eq!(t.sessions.len(), 1);
+		assert_eq!(live(&t), 1);
 	}
 
 	// ---- files

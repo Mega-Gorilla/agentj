@@ -91,6 +91,16 @@ pub fn app_windows(programs: &[&str]) -> Vec<WindowInfo> {
 		.collect()
 }
 
+/// Something that changes when another window comes to the front or the one
+/// in front changes its title: its handle and title. Cheap to ask often.
+pub fn foreground_key() -> Option<(isize, String)> {
+	let hwnd = unsafe { GetForegroundWindow() };
+	if hwnd.0.is_null() {
+		return None;
+	}
+	Some((hwnd.0 as isize, title(hwnd)))
+}
+
 /// The window the user is typing into right now.
 pub fn foreground() -> Option<WindowInfo> {
 	let hwnd = unsafe { GetForegroundWindow() };

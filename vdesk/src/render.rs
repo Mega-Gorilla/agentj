@@ -119,10 +119,12 @@ pub struct AgentCard<'a> {
 	pub name: &'a str,
 	pub state: State,
 	pub stale: bool,
-	/// 0-based desktop index, if known
-	pub desktop: Option<usize>,
+	/// 0-based desktop index
+	pub desktop: usize,
 	/// time in the current state
 	pub elapsed_ms: u64,
+	/// the session is on the desktop being shown
+	pub here: bool,
 }
 
 /// One AI session: tool, desktop number, name, state and how long it has been in it.
@@ -152,21 +154,23 @@ pub fn agent(card: &AgentCard) -> String {
 		// The tool colours do not read well on the strong state colours.
 		tool_colour = "#FFFFFF";
 	}
-	// Desktop number, or "?" while it is not known yet (pressing then does nothing).
-	let (desktop_text, desktop_opacity) = match card.desktop {
-		Some(i) => ((i + 1).to_string(), "0.7"),
-		None => ("?".to_owned(), "0.35"),
-	};
 	let desktop = format!(
-		r##"<rect x="104" y="8" width="32" height="26" rx="5" fill="none" stroke="#FFFFFF" stroke-opacity="{desktop_opacity}" stroke-width="2" stroke-dasharray="{}"/><text x="120" y="21" font-size="18" font-weight="700" fill="#FFFFFF" fill-opacity="{desktop_opacity}" text-anchor="middle" dominant-baseline="central">{desktop_text}</text>"##,
-		if card.desktop.is_some() { "none" } else { "4 3" }
+		r##"<rect x="100" y="12" width="32" height="26" rx="5" fill="none" stroke="#FFFFFF" stroke-opacity="0.7" stroke-width="2"/><text x="116" y="25" font-size="18" font-weight="700" fill="#FFFFFF" fill-opacity="0.7" text-anchor="middle" dominant-baseline="central">{}</text>"##,
+		card.desktop + 1
 	);
 	let (name, name_size) = fit(card.name, 30.0, 15.0);
 	let (status, status_size) = fit(&format!("{label} {}", elapsed(card.elapsed_ms)), 22.0, 14.0);
+	// "You are here": a red frame, with a thin white line inside so that it
+	// also reads on the orange and red backgrounds.
+	let frame = if card.here {
+		r##"<rect x="3.5" y="3.5" width="137" height="137" rx="10" fill="none" stroke="#FF3B30" stroke-width="7"/><rect x="7.75" y="7.75" width="128.5" height="128.5" rx="7" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>"##
+	} else {
+		""
+	};
 	let inner = format!(
-		r#"<text x="12" y="28" font-size="19" font-weight="700" fill="{tool_colour}">{tool}</text>{desktop}{}{}"#,
+		r#"<text x="14" y="30" font-size="19" font-weight="700" fill="{tool_colour}">{tool}</text>{desktop}{}{}{frame}"#,
 		centered(74.0, name_size, "#FFFFFF", 700, &name),
-		centered(118.0, status_size, label_colour, 700, &status)
+		centered(116.0, status_size, label_colour, 700, &status)
 	);
 	svg(background, &inner)
 }
@@ -186,6 +190,37 @@ pub fn agents_summary(attention: usize, done: usize, working: usize) -> String {
 		})
 		.collect();
 	svg(background, &inner)
+}
+
+/// A checkbox in the summary key's settings screen: whether that key goes to
+/// this tool's sessions.
+pub fn jump_option(tool: Tool, on: bool) -> String {
+	let (name, name_colour) = match tool {
+		Tool::Claude => ("Claude", "#F4A98A"),
+		Tool::Codex => ("Codex", "#9FE7C9"),
+	};
+	let (fill, stroke, mark, label, label_colour) = if on {
+		("#16A34A", "#16A34A", r##"<path d="M58 70 L68 80 L87 59" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>"##, "移動する", "#4ADE80")
+	} else {
+		("none", "#94A3B8", "", "移動しない", "#94A3B8")
+	};
+	let inner = format!(
+		r##"{}<rect x="50" y="48" width="44" height="44" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="4"/>{mark}{}"##,
+		centered(26.0, 24.0, name_colour, 700, name),
+		centered(118.0, 20.0, label_colour, 700, label)
+	);
+	svg("#1E293B", &inner)
+}
+
+/// The summary key while its settings screen is open: press to close.
+pub fn settings_close() -> String {
+	let inner = format!(
+		"{}{}{}",
+		centered(34.0, 22.0, "#94A3B8", 700, "集計キーの"),
+		centered(66.0, 30.0, "#FFFFFF", 700, "移動先"),
+		centered(112.0, 20.0, "#FBBF24", 700, "押して閉じる")
+	);
+	svg("#334155", &inner)
 }
 
 /// The refresh key. `removed` is how many closed sessions the press just

@@ -18,7 +18,7 @@ $defs = @{
 	prev   = @{ name = 'Previous Desktop'; multi = $true; tip = '左隣のデスクトップへ' }
 	next   = @{ name = 'Next Desktop'; multi = $true; tip = '右隣のデスクトップへ' }
 	agent  = @{ name = 'AI Session'; multi = $false; tip = 'Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ' }
-	agents = @{ name = 'AI Summary'; multi = $false; tip = '要対応・返答済・作業中の数。押すと一番待たせているセッションのデスクトップへ' }
+	agents = @{ name = 'AI Summary'; multi = $false; tip = '要対応・返答済・作業中の数。押すと対応を待っているセッションのデスクトップへ、続けて押すと次の対象へ' }
 	agentprev = @{ name = 'AI Page Previous'; multi = $false; icon = 'prev'; tip = 'AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙' }
 	agentnext = @{ name = 'AI Page Next'; multi = $false; icon = 'next'; tip = 'AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙' }
 	agentrefresh = @{ name = 'AI Refresh'; multi = $false; icon = 'refresh'; tip = '名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す' }
@@ -41,6 +41,16 @@ function New-OwnKey([string]$kind, [int]$pos, $settings = [ordered]@{}) {
 	}
 }
 
+# An image from the plugin's imgs\ folder as a data URL. OpenDeck draws a "!"
+# for an image file it cannot load, and its built-in web server refuses files
+# outside its config folder. The plugin folder is a junction to this
+# repository, so its files count as outside. Only matters for keys whose image
+# the plugin does not send itself, i.e. the profile switch keys.
+function Get-ImageData([string]$name) {
+	$bytes = [IO.File]::ReadAllBytes((Join-Path $root "plugin\$plugin\imgs\$name.svg"))
+	'data:image/svg+xml;base64,' + [Convert]::ToBase64String($bytes)
+}
+
 # OpenDeck's bundled Starter Pack "Switch Profile" action.
 function New-SwitchKey([int]$pos, [string]$profile, [string]$image) {
 	$sp = '__OPENDECK__/plugins/com.amansprojects.starterpack.sdPlugin'
@@ -53,7 +63,7 @@ function New-SwitchKey([int]$pos, [string]$profile, [string]$image) {
 			states = @([ordered]@{ image = 'actionDefaultImage' })
 		}
 		context = "Keypad.$pos.0"
-		states = @([ordered]@{ image = (& $img $image); show = $false })
+		states = @([ordered]@{ image = (Get-ImageData $image); show = $false })
 		current_state = 0
 		settings = [ordered]@{ device = '__DEVICE__'; profile = $profile }
 		children = $null

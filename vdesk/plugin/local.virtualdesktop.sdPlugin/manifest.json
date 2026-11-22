@@ -59,7 +59,7 @@
 		{
 			"UUID": "local.virtualdesktop.agents",
 			"Name": "AI Summary",
-			"Tooltip": "要対応・返答済・作業中の数。押すと一番待たせているセッションのデスクトップへ",
+			"Tooltip": "要対応・返答済・作業中の数。押すと対応を待っているセッションのデスクトップへ、続けて押すと次の対象へ",
 			"Icon": "imgs/agents",
 			"States": [{ "Image": "imgs/agents", "ShowTitle": false }],
 			"Controllers": ["Keypad"],

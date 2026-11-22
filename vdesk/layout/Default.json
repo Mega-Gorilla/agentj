@@ -455,7 +455,7 @@
       "context": "Keypad.14.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/to-ai.svg",
+          "image": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDQiIGhlaWdodD0iMTQ0IiB2aWV3Qm94PSIwIDAgMTQ0IDE0NCIgZm9udC1mYW1pbHk9IidZdSBHb3RoaWMgVUknLCdNZWlyeW8nLCdTZWdvZSBVSScsc2Fucy1zZXJpZiI+PHJlY3Qgd2lkdGg9IjE0NCIgaGVpZ2h0PSIxNDQiIGZpbGw9IiMzMTJFODEiLz48dGV4dCB4PSI3MiIgeT0iNjIiIGZvbnQtc2l6ZT0iNTIiIGZvbnQtd2VpZ2h0PSI3MDAiIGZpbGw9IiNGRkZGRkYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJjZW50cmFsIj5BSTwvdGV4dD48dGV4dCB4PSI3MiIgeT0iMTEyIiBmb250LXNpemU9IjIyIiBmaWxsPSIjQzdEMkZFIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0iY2VudHJhbCI+54q25oWL44G4IOKWtjwvdGV4dD48L3N2Zz4K",
           "show": false
         }
       ],

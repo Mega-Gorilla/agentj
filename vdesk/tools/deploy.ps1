@@ -27,6 +27,10 @@ function Copy-WithRetry([string]$from, [string]$to) {
 	throw "could not replace $to : $last"
 }
 
+function Get-OpenDeckWebView {
+	Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -match 'opendeck' }
+}
+
 $stopped = $false
 $failed = $false
 try {
@@ -47,6 +51,14 @@ try {
 	Get-Process -Name opendeck*, vdesk -ErrorAction SilentlyContinue | Stop-Process -Force
 	$deadline = (Get-Date).AddSeconds(10)
 	while ((Get-Process -Name opendeck*, vdesk -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
+	# OpenDeck draws the keys in a WebView2 window, whose helper processes
+	# outlive it for a moment. Starting OpenDeck again while they are still
+	# going has once left it with the buttons working and nothing drawn on
+	# the keys, so wait for them, and end any that stay.
+	$deadline = (Get-Date).AddSeconds(5)
+	while ((Get-OpenDeckWebView) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
+	Get-OpenDeckWebView | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+	Start-Sleep -Milliseconds 500
 	Write-Log 'stopped OpenDeck'
 
 	# 2. the plugin exe, and the hook sender that Claude Code / Codex hooks run
