@@ -65,10 +65,14 @@ fn selftest() -> std::process::ExitCode {
 		Ok(()) => println!("switch call (to the current desktop, no visible change): ok"),
 		Err(e) => println!("switch call FAILED: {e:?} (keyboard fallback would be used)"),
 	}
+	let desktop_of = |w: &agents::winutil::WindowInfo| w.desktop.as_ref().and_then(|g| snap.ids.iter().position(|x| x == g)).map(|i| i + 1);
 	println!("claude windows:");
 	for w in agents::winutil::app_windows(&["claude"]) {
-		let index = w.desktop.as_ref().and_then(|g| snap.ids.iter().position(|x| x == g));
-		println!("  desktop {:?}: {:?}", index.map(|i| i + 1), w.title);
+		println!("  desktop {:?}: {:?}", desktop_of(&w), w.title);
+	}
+	println!("codex threads shown in ChatGPT windows:");
+	for w in agents::winutil::chatgpt_threads() {
+		println!("  desktop {:?}: {:?}", desktop_of(&w), w.title);
 	}
 
 	let grids: String = agents::keys::preview().iter().map(|(title, keys)| preview_grid(title, keys)).collect();

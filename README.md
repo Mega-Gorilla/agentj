@@ -8,7 +8,8 @@ AgentJ is a plugin for [OpenDeck](https://github.com/nekename/OpenDeck), the ope
 people who run several AI coding agents at once, one project per Windows 11 virtual desktop:
 
 - Every Claude Code / Codex session gets a key showing its name, its desktop and its state: waiting for your approval,
-  waiting for input, answered, working, error.
+  answered, working, error, and for Claude Code also waiting for input (an MCP form or link). Codex sends no event when
+  it asks you a question, so such a Codex session shows as working.
 - Press a session's key and Windows switches to the virtual desktop it runs on.
 - The summary key counts what needs you, and takes you to the session that has waited longest; press it again for the
   next one.
@@ -27,8 +28,8 @@ people who run several AI coding agents at once, one project per Windows 11 virt
 
 ### 1. Install the plugin
 
-Get `AgentJ-<version>-windows-x64.zip` from this repository's Releases page, or build it yourself (see
-[Build from source](#build-from-source)). Then either:
+Get `AgentJ-<version>-windows-x64.zip` from the [Releases page](https://github.com/Mega-Gorilla/agentj/releases), or
+build it yourself (see [Build from source](#build-from-source)). Then either:
 
 - in OpenDeck, install the zip as a plugin from a file, or
 - unzip it and put the `io.github.mega-gorilla.agentj.sdPlugin` folder into `%APPDATA%\opendeck\plugins\`, then
@@ -49,8 +50,9 @@ This adds entries to `~/.claude/settings.json` and `~/.codex/hooks.json` (or und
 `codex` at the end to install for one of them only. Other hooks and settings in those files are kept, and a backup of
 each changed file is saved next to it as `<file>.bak-<time>`.
 
-**Codex:** open the Codex app, go to **Settings > Hooks** and approve the AgentJ hooks. Codex does not run hooks
-until they are approved, and asks again whenever a hook's command changes (for example after the plugin moved).
+**Codex:** approve the AgentJ hooks. In the Codex app, go to **Settings > Hooks**; in the Codex CLI, run `/hooks`.
+Codex does not run hooks until they are approved, and asks again whenever a hook's command changes (for example after
+the plugin moved).
 
 Claude Code picks the hooks up without a restart.
 
@@ -62,7 +64,7 @@ In OpenDeck, the actions are under the **AgentJ** category:
 |---|---|
 | AI Session | One session per key. Select the key and choose which tool it is for (Claude Code / Codex) in its settings. |
 | AI Summary | How many sessions need you / have answered / are working. Press: go to the next session waiting for you. Hold: choose which tools it jumps to. |
-| AI Refresh | Re-read everything now and clear away sessions that look closed. |
+| AI Refresh | Re-read everything now: put each Codex session on the desktop of the ChatGPT window showing it, and clear away sessions that look closed. See the note below. |
 | AI Page Previous / Next | Page through the sessions when there are more than keys. |
 | Desktop | One virtual desktop per key, numbered in reading order. Press to switch to it. |
 | Desktop Info | Current desktop / number of desktops, and its name. |
@@ -79,6 +81,18 @@ AI profile                                  Desktop profile
 ```
 
 Each column of the AI rows is one virtual desktop: a desktop's Claude Code session sits above its Codex session.
+
+**How AI Refresh finds Codex sessions.** Every ChatGPT window is titled just "ChatGPT", so to see which thread each
+one shows, Refresh reads the windows through Windows UI Automation (the accessibility interface). After that, the
+ChatGPT app keeps its accessibility data up to date, which may cost it a little speed. AgentJ reads the windows only
+when you press Refresh.
+
+**AI Refresh and sessions without a window.** Refresh judges a session closed when no app window shows it: no
+Claude window titled with its name, no ChatGPT window showing its thread. So a Codex thread you switched away from in
+the ChatGPT app is cleared too; it comes back as soon as it does something again. Sessions that are working or
+waiting for you always stay. A session you run in a terminal (Claude Code or Codex CLI) has no such window, so Refresh clears it even
+while it is open, unless it is working or waiting. It comes back with its next event, but an answer you have not read
+yet is no longer shown until then.
 
 ### 4. Check it works
 
@@ -103,9 +117,10 @@ for the Claude desktop app, from the window titled with the session's name.
 
 | Problem | What to do |
 |---|---|
-| Codex sessions do not change | Approve the hooks in the Codex app under **Settings > Hooks**. |
-| A session does not appear | AgentJ does not know its desktop yet. Send a prompt from that session's window. |
+| Codex sessions do not change | Approve the hooks: Codex app **Settings > Hooks**, or `/hooks` in the Codex CLI. |
+| A session does not appear, or is on the wrong desktop | Press **AI Refresh**, or send a prompt from that session's window. |
 | A session that was closed stays on a key | Press **AI Refresh**. |
+| A terminal session disappeared after AI Refresh | Expected: see [the note on AI Refresh](#3-place-the-keys). It comes back with its next event. |
 | The keys work but show nothing | Restart OpenDeck. |
 | Something else | See the log, `%LOCALAPPDATA%\AgentJ\agentj.log` (`agentj.prev.log` is the previous run). |
 
@@ -120,8 +135,8 @@ agents' own files on this computer and sends nothing over the network.
 Needs [Rust](https://rustup.rs/) 1.88 or later and PowerShell 7 (`pwsh`).
 
 ```powershell
-git clone <this repository>
-cd <repository>
+git clone https://github.com/Mega-Gorilla/agentj.git
+cd agentj
 cargo test --release
 pwsh tools\package.ps1
 ```

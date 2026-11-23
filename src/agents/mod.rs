@@ -63,6 +63,16 @@ const PROMPT_TIMING_MS: [(Tool, u64, u64); 2] = [(Tool::Claude, 0, 1_500), (Tool
 /// The refresh key removes a Codex session with no known desktop once it has
 /// been quiet for this long.
 const SWEEP_IDLE_MS: u64 = 30 * 60 * 1000;
+/// Codex runs the calls of one batch at once, so they start and make their
+/// approval requests within moments of each other; the next batch only starts
+/// after every call has come back and the model has answered again, which
+/// takes longer than this.
+const BATCH_GAP_MS: u64 = 1_000;
+/// Codex: whether what happened at `at` is of an earlier batch than a call
+/// that started at `latest`.
+fn earlier_batch(at: u64, latest: u64) -> bool {
+	at.saturating_add(BATCH_GAP_MS) < latest
+}
 /// Finished calls remembered per session, for requests that arrive after them.
 const FINISHED_KEEP: usize = 16;
 /// Codex names its automatic approval-review subagents like this.
@@ -123,6 +133,21 @@ pub struct View {
 	pub desktop: Option<String>,
 }
 
+/// What a recorded desktop rests on, weakest first. A prompt only moves a
+/// session to another desktop on evidence at least as strong as what put it
+/// where it is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+enum Evidence {
+	/// Recorded before this was kept, or not known.
+	#[default]
+	Unknown,
+	/// A prompt sent while a terminal was in front. Many terminals are not
+	/// the agent (an SSH session, a build), so this is easily wrong.
+	Terminal,
+	/// The agent's own app: a prompt sent from it, or its window.
+	App,
+}
+
 /// An approval request that has not been answered as far as we know.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Ask {
@@ -135,7 +160,6 @@ struct Ask {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Call {
 	id: String,
-	call: u64,
 	at: u64,
 }
 
@@ -163,6 +187,9 @@ struct Session {
 	last: u64,
 	/// Virtual desktop GUID.
 	desktop: Option<String>,
+	/// What `desktop` rests on.
+	#[serde(default)]
+	desktop_from: Evidence,
 	/// The user has typed into this session since we started tracking it.
 	#[serde(default)]
 	prompted: bool,
@@ -175,6 +202,13 @@ struct Session {
 	open: Vec<Call>,
 	#[serde(default)]
 	finished: Vec<Finished>,
+	/// When a turn or a batch of calls last ended: approval requests from
+	/// before then are settled, also ones that arrive late.
+	#[serde(default)]
+	settled: u64,
+	/// Codex: when the latest tool call started (see `BATCH_GAP_MS`).
+	#[serde(default)]
+	latest_start: u64,
 	/// When the session ended (or was cleared away by the refresh key). It
 	/// is kept, unseen, so that events from before then are dropped and so
 	/// that its name and desktop are still known if it is resumed.
@@ -199,11 +233,14 @@ impl Session {
 			since: ts,
 			last: 0,
 			desktop: None,
+			desktop_from: Evidence::Unknown,
 			prompted: false,
 			hidden: false,
 			asks: Vec::new(),
 			open: Vec::new(),
 			finished: Vec::new(),
+			settled: 0,
+			latest_start: 0,
 			ended: None,
 			name_checked: 0,
 			title_offset: 0,
@@ -213,9 +250,21 @@ impl Session {
 	/// The session is over as of `ts`; see `ended`.
 	fn end(&mut self, ts: u64) {
 		self.ended = Some(ts);
-		self.asks.clear();
-		self.open.clear();
-		self.finished.clear();
+		self.settle(ts);
+	}
+
+	/// Put the session on `desktop`, unless what put it where it is was
+	/// stronger evidence. Returns whether it moved.
+	fn place(&mut self, desktop: &str, evidence: Evidence) -> bool {
+		if evidence < self.desktop_from {
+			return false;
+		}
+		self.desktop_from = evidence;
+		if self.desktop.as_deref() == Some(desktop) {
+			return false;
+		}
+		self.desktop = Some(desktop.to_owned());
+		true
 	}
 
 	fn label(&self) -> String {
@@ -249,76 +298,89 @@ impl Session {
 		}
 	}
 
+	/// Everything up to `ts` is over: no request or call from before then is
+	/// pending, also if its event arrives later.
+	fn settle(&mut self, ts: u64) {
+		self.settled = self.settled.max(ts);
+		self.asks.retain(|a| a.at > ts);
+		self.open.retain(|c| c.at > ts);
+		self.finished.retain(|f| f.at > ts);
+	}
+
+	/// Codex: what happened at `at` (a call starting, a request) belongs to a
+	/// batch that is over, because a call of a later batch has started.
+	fn batch_over(&self, at: u64) -> bool {
+		self.tool == Tool::Codex && earlier_batch(at, self.latest_start)
+	}
+
 	/// Follow tool calls and the approval requests made for them.
 	///
 	/// Order within one call is PreToolUse, PermissionRequest (only when it
-	/// needs approval), then PostToolUse once it has run. Only the Pre and
-	/// Post events carry the call's id, so a request is matched to its call by
-	/// a hash of the tool input (`Event::call`).
-	fn track_calls(&mut self, event: &Event, codex_auto_review: bool) {
+	/// needs approval), then PostToolUse once it has run; hooks run in the
+	/// background, so they may arrive in any order. Only the Pre and Post
+	/// events carry the call's id, so a request is matched to its call by a
+	/// hash of the tool input (`Event::call`).
+	///
+	/// A request is pending until one of:
+	/// - its call finishes (PostToolUse / PostToolUseFailure);
+	/// - the batch or the turn ends (`settle`);
+	/// - Codex only: a call of a later batch starts. Codex sends nothing when
+	///   a request is rejected, and the model takes its next step only once
+	///   every call of the batch has come back (`batch_over`).
+	fn track_calls(&mut self, event: &Event) {
 		let (ts, call) = (event.ts, event.call.unwrap_or(0));
 		match event.hook_event_name.as_str() {
 			"PreToolUse" => {
-				// Codex sends nothing when a request is rejected. The model
-				// only starts another call after the earlier ones came back,
-				// so older requests are settled. Only relied on under
-				// automatic review, where dropping one early costs nothing.
-				if self.tool == Tool::Codex && codex_auto_review {
-					self.asks.retain(|a| a.at >= ts);
-				}
 				let Some(id) = event.tool_use_id.as_deref() else { return };
 				let known = self.open.iter().any(|c| c.id == id) || self.finished.iter().any(|f| f.id.as_deref() == Some(id));
-				if !known {
-					self.open.push(Call { id: id.to_owned(), call, at: ts });
+				if !known && ts > self.settled {
+					self.open.push(Call { id: id.to_owned(), at: ts });
+				}
+				if self.tool == Tool::Codex && ts > self.latest_start {
+					// Maybe a new batch: what earlier ones asked is settled.
+					self.latest_start = ts;
+					self.asks.retain(|a| !earlier_batch(a.at, ts));
+					self.open.retain(|c| !earlier_batch(c.at, ts));
 				}
 			}
 			"PostToolUse" | "PostToolUseFailure" => {
 				if let Some(id) = event.tool_use_id.as_deref() {
 					self.open.retain(|c| c.id != id);
 				}
-				let mine = self
-					.asks
-					.iter()
-					.position(|a| call != 0 && a.call == call && a.at <= ts)
-					.or_else(|| self.asks.iter().position(|a| a.call == 0));
-				match mine {
+				match self.asks.iter().position(|a| call != 0 && a.call == call && a.at <= ts) {
 					Some(i) => {
 						self.asks.remove(i);
 					}
 					// Its request, if any, has not arrived yet.
-					None => {
+					None if ts > self.settled => {
 						self.finished.push(Finished { id: event.tool_use_id.clone(), call, at: ts });
 						if self.finished.len() > FINISHED_KEEP {
 							self.finished.remove(0);
 						}
 					}
-				}
-				// A request can only be waiting on a call that is still
-				// running. Catches requests whose hash matched no call.
-				while self.asks.len() > self.open.len() {
-					log::info!("{:?} {}: an approval request matched no running call, dropped", self.tool, self.label());
-					self.asks.remove(0);
+					None => {}
 				}
 			}
 			"PermissionRequest" => {
-				// Hooks are not delivered in order: the call may be over already.
-				if let Some(i) = self.finished.iter().position(|f| call != 0 && f.call == call && f.at >= ts) {
-					self.finished.remove(i);
-				} else {
-					self.asks.push(Ask { call, at: ts });
+				if ts <= self.settled || self.batch_over(ts) {
+					return; // late: its turn or batch is over already
+				}
+				match self.finished.iter().position(|f| call != 0 && f.call == call && f.at >= ts) {
+					Some(i) => {
+						self.finished.remove(i);
+					}
+					None => self.asks.push(Ask { call, at: ts }),
 				}
 			}
-			// Claude Code's reminder, about 6 s into an unanswered prompt.
+			// Claude Code's reminder, about 6 s into an unanswered prompt:
+			// stands in for a request that did not arrive. Not known which
+			// call it is for, so only the end of the batch settles it.
 			"Notification" if event.notification_type.as_deref() == Some("permission_prompt") => {
-				if self.asks.is_empty() {
+				if self.asks.is_empty() && ts > self.settled {
 					self.asks.push(Ask { call: 0, at: ts });
 				}
 			}
-			// The turn, or the batch of calls, is over: nothing is pending.
-			"Stop" | "StopFailure" | "Interrupt" | "SessionStart" | "UserPromptSubmit" | "PostToolBatch" => {
-				self.asks.retain(|a| a.at > ts);
-				self.open.retain(|c| c.at > ts);
-			}
+			"Stop" | "StopFailure" | "Interrupt" | "SessionStart" | "UserPromptSubmit" | "PostToolBatch" => self.settle(ts),
 			_ => {}
 		}
 	}
@@ -337,6 +399,8 @@ struct Event {
 	agent_id: Option<String>,
 	agent_type: Option<String>,
 	tool_use_id: Option<String>,
+	/// SessionStart: why the session started (startup, resume, compact...).
+	source: Option<String>,
 	/// Hash of the tool call's input, added by agentj-hook.
 	call: Option<u64>,
 	#[serde(default)]
@@ -363,16 +427,31 @@ fn next_state(event: &Event) -> Option<State> {
 	}
 }
 
-/// Programs a prompt for this tool is typed into. A prompt submitted while
-/// something else is in front (e.g. sent from a phone) does not move the
-/// session to the current desktop.
-fn typed_from(tool: Tool, process: &str) -> bool {
+/// Whether a prompt for this tool could have been typed into a window of
+/// `process`, and how much that says (see `Evidence`). A prompt submitted
+/// while something else is in front (e.g. sent from a phone) says nothing.
+fn typed_from(tool: Tool, process: &str) -> Option<Evidence> {
 	let own: &[&str] = match tool {
 		Tool::Claude => &["claude"],
 		Tool::Codex => &["ChatGPT", "Codex"],
 	};
 	let terminals = ["WindowsTerminal", "Code", "cmd", "powershell", "pwsh", "conhost", "OpenConsole", "wezterm-gui"];
-	own.iter().chain(terminals.iter()).any(|p| p.eq_ignore_ascii_case(process))
+	let is = |names: &[&str]| names.iter().any(|p| p.eq_ignore_ascii_case(process));
+	if is(own) {
+		Some(Evidence::App)
+	} else if is(&terminals) {
+		Some(Evidence::Terminal)
+	} else {
+		None
+	}
+}
+
+/// Claude Code holds a prompt sent while it is busy and runs its hook only
+/// when it takes the prompt in, by when the user may well be on another
+/// desktop. (Codex takes such a prompt in at once: its hook comes while the
+/// window it was typed into is still around.)
+fn hook_waits_for_busy_session(tool: Tool) -> bool {
+	tool == Tool::Claude
 }
 
 fn key(tool: Tool, session_id: &str) -> String {
@@ -441,27 +520,38 @@ impl Tracker {
 		if let Some(title) = event.session_title.take().filter(|t| !t.trim().is_empty()) {
 			session.name = Some(title);
 		}
+		if event.hook_event_name == "SessionStart" {
+			let source = event.source.as_deref().unwrap_or("?");
+			log::info!("{tool:?} {}: session start ({source})", session.label());
+		}
 		if event.hook_event_name == "UserPromptSubmit" {
 			session.prompted = true;
 			session.name_checked = 0; // a first prompt is when names usually appear
-			// A message sent while the session is busy waits in a queue and only
-			// reaches the hook when it is delivered, by which time the user may
-			// well be on another desktop.
 			let busy = matches!(session.state, State::Working | State::Input) || !session.asks.is_empty();
-			let queued = busy && !session.is_stale(event.ts);
+			let held = hook_waits_for_busy_session(tool) && busy && !session.is_stale(event.ts);
 			// The hook comes a moment after the prompt was sent (about 2 s for
 			// Codex), and the user may have clicked another window since, so
 			// any window in front lately that the prompt could have been typed
-			// into will do.
-			let typed_in = recent.iter().find(|w| typed_from(tool, &w.process) && w.desktop.is_some() && !others.contains(&w.title));
+			// into will do, the likeliest first.
+			let typed_in = recent.iter().find_map(|w| {
+				let evidence = typed_from(tool, &w.process)?;
+				let desktop = w.desktop.as_deref()?;
+				(!others.contains(&w.title)).then_some((desktop, evidence, w))
+			});
+			let label = session.label();
 			match (typed_in, recent.first()) {
-				(_, Some(front)) if queued => {
-					log::info!("{tool:?} {}: queued prompt, desktop of {:?} not used", session.label(), front.title)
+				(_, Some(front)) if held => log::info!("{tool:?} {label}: prompt held while busy, desktop of {:?} not used", front.title),
+				(Some((desktop, evidence, window)), _) => {
+					if !session.place(desktop, evidence) && session.desktop.as_deref() != Some(desktop) {
+						log::info!(
+							"{tool:?} {label}: {:?} {:?} is weaker evidence than what placed it, desktop kept",
+							window.process,
+							window.title
+						);
+					}
 				}
-				(Some(window), _) => session.desktop = window.desktop.clone(),
 				(None, Some(front)) => log::info!(
-					"{tool:?} {}: no window of its own in front lately ({:?} {:?}), desktop not recorded",
-					session.label(),
+					"{tool:?} {label}: no window it could be typed into in front lately ({:?} {:?}), desktop not recorded",
 					front.process,
 					front.title
 				),
@@ -469,7 +559,7 @@ impl Tracker {
 			}
 		}
 
-		session.track_calls(&event, codex_auto_review);
+		session.track_calls(&event);
 		if event.ts >= session.last {
 			session.last = event.ts;
 			if let Some(state) = next_state(&event)
@@ -520,22 +610,29 @@ impl Tracker {
 		desktops.all(|d| d == first).then(|| first.to_owned())
 	}
 
-	/// Put Claude sessions on the desktop of their window. Returns whether
-	/// any moved.
-	fn place_by_windows(&mut self, windows: &[WindowInfo]) -> bool {
+	/// Put `tool`'s sessions on the desktop of the app window that shows them
+	/// by name (`WindowInfo::title`): a Claude window titled with the session
+	/// name, a ChatGPT window showing the Codex thread. Not when windows with
+	/// that name sit on different desktops: then it is not known which is
+	/// whose, and what is recorded stays. Returns whether any moved.
+	fn place_by_names(&mut self, tool: Tool, windows: &[WindowInfo]) -> bool {
 		let mut any = false;
-		// A window titled with the session name says where the session is,
-		// unless windows with that title sit on different desktops: then it
-		// is not known which is whose, and what is recorded stays.
-		for s in self.sessions.values_mut().filter(|s| s.tool == Tool::Claude && s.ended.is_none()) {
+		for s in self.sessions.values_mut().filter(|s| s.tool == tool && s.ended.is_none()) {
 			let Some(name) = s.name.as_deref() else { continue };
 			let mut desktops = windows.iter().filter(|w| w.title == name).filter_map(|w| w.desktop.as_ref());
 			let Some(first) = desktops.next() else { continue };
-			if desktops.all(|d| d == first) && s.desktop.as_ref() != Some(first) {
-				s.desktop = Some(first.clone());
+			if desktops.all(|d| d == first) && s.place(first, Evidence::App) {
+				log::info!("{tool:?} {}: placed by its app window", s.label());
 				any = true;
 			}
 		}
+		any
+	}
+
+	/// Put Claude sessions on the desktop of their window. Returns whether
+	/// any moved.
+	fn place_by_windows(&mut self, windows: &[WindowInfo]) -> bool {
+		let mut any = self.place_by_names(Tool::Claude, windows);
 		// Some windows are titled just "Claude" instead of their session's
 		// name. With exactly one of those and exactly one session that has no
 		// window of its own, they go together.
@@ -543,10 +640,10 @@ impl Tracker {
 		let has_window = |s: &Session| s.name.as_deref().is_some_and(|n| windows.iter().any(|w| w.title == n));
 		let mut unplaced = self.sessions.values_mut().filter(|s| s.tool == Tool::Claude && s.visible() && !has_window(s));
 		if let ([window], Some(s), None) = (untitled.as_slice(), unplaced.next(), unplaced.next())
-			&& s.desktop != window.desktop
+			&& let Some(desktop) = window.desktop.as_deref()
+			&& s.place(desktop, Evidence::App)
 		{
 			log::info!("Claude {}: placed by the window titled {APP_TITLE:?}", s.label());
-			s.desktop = window.desktop.clone();
 			any = true;
 		}
 		any
@@ -559,13 +656,22 @@ impl Tracker {
 	/// the user or are at work stay whatever the windows say. Of the rest:
 	/// - Claude goes when no window is titled with its name and no untitled
 	///   "Claude" window is on its desktop.
-	/// - Codex windows all look alike, so it goes when its desktop has no
-	///   ChatGPT window left, or, with no desktop recorded, when nothing has
-	///   happened in it for `SWEEP_IDLE_MS`.
+	/// - Codex goes when no ChatGPT window shows its thread (`codex_threads`,
+	///   read through UI Automation). When that could not be read, all that
+	///   is known is where the windows are (`codex`), and it goes when its
+	///   desktop has no ChatGPT window left, or, with no desktop recorded,
+	///   when nothing has happened in it for `SWEEP_IDLE_MS`.
 	///
 	/// They are marked ended, not dropped: one cleared by mistake comes back
 	/// with its next hook event, name and desktop intact.
-	fn sweep(&mut self, now: u64, codex_auto_review: bool, claude: &[WindowInfo], codex: &[WindowInfo]) -> Vec<String> {
+	fn sweep(
+		&mut self,
+		now: u64,
+		codex_auto_review: bool,
+		claude: &[WindowInfo],
+		codex: &[WindowInfo],
+		codex_threads: Option<&[WindowInfo]>,
+	) -> Vec<String> {
 		let closed = |s: &Session| {
 			let state = s.shown(now, codex_auto_review).0;
 			if s.ended.is_some() || state.needs_user() || state == State::Reviewing || (state == State::Working && !s.is_stale(now)) {
@@ -577,9 +683,10 @@ impl Tracker {
 					let untitled = s.desktop.is_some() && claude.iter().any(|w| w.title == APP_TITLE && w.desktop == s.desktop);
 					!own && !untitled
 				}
-				Tool::Codex => match &s.desktop {
-					Some(desktop) => !codex.iter().any(|w| w.desktop.as_ref() == Some(desktop)),
-					None => now.saturating_sub(s.last.max(s.since)) > SWEEP_IDLE_MS,
+				Tool::Codex => match (codex_threads, s.name.as_deref(), &s.desktop) {
+					(Some(threads), Some(name), _) => !threads.iter().any(|w| w.title == name),
+					(_, _, Some(desktop)) => !codex.iter().any(|w| w.desktop.as_ref() == Some(desktop)),
+					(_, _, None) => now.saturating_sub(s.last.max(s.since)) > SWEEP_IDLE_MS,
 				},
 			}
 		};
@@ -807,21 +914,34 @@ fn codex_auto_review() -> bool {
 	std::fs::read_to_string(codex_home().join("config.toml")).is_ok_and(|text| auto_review_in(&text))
 }
 
-/// The refresh key: re-read names and windows now, then remove the sessions
-/// that look closed (see `Tracker::sweep`). Returns how many went.
+/// The refresh key: re-read names and windows now, put Codex sessions on the
+/// desktop of the ChatGPT window showing them, then remove the sessions that
+/// look closed (see `Tracker::sweep`). Returns how many went.
 pub async fn sweep() -> usize {
 	for s in TRACKER.lock().unwrap().sessions.values_mut() {
 		s.name_checked = 0;
 	}
 	maintain().await;
-	let windows = tokio::task::spawn_blocking(|| (winutil::app_windows(&["claude"]), winutil::app_windows(&["ChatGPT", "Codex"]))).await;
-	let Ok((claude, codex)) = windows else { return 0 };
+	let windows = tokio::task::spawn_blocking(|| {
+		(winutil::app_windows(&["claude"]), winutil::app_windows(&["ChatGPT", "Codex"]), winutil::chatgpt_threads())
+	})
+	.await;
+	let Ok((claude, codex, threads)) = windows else { return 0 };
+	let shown: Vec<_> = threads.iter().map(|w| w.title.as_str()).collect();
+	log::info!("refresh: ChatGPT windows show {shown:?}");
+	// No thread read from windows that are there: reading failed, so what
+	// the windows show is not known.
+	let threads_known = codex.is_empty() || !threads.is_empty();
 	let auto_review = CODEX_AUTO_REVIEW.load(Ordering::Relaxed);
-	let gone = TRACKER.lock().unwrap().sweep(now_ms(), auto_review, &claude, &codex);
+	let (placed, gone) = {
+		let mut tracker = TRACKER.lock().unwrap();
+		let placed = tracker.place_by_names(Tool::Codex, &threads);
+		(placed, tracker.sweep(now_ms(), auto_review, &claude, &codex, threads_known.then_some(threads.as_slice())))
+	};
 	for label in &gone {
 		log::info!("{label}: looks closed, removed");
 	}
-	if !gone.is_empty() {
+	if placed || !gone.is_empty() {
 		changed();
 	}
 	gone.len()
@@ -1007,14 +1127,50 @@ mod tests {
 	}
 
 	#[test]
-	fn a_request_matching_no_call_goes_when_nothing_is_running() {
+	fn a_request_matching_no_call_stays_until_the_turn_ends() {
 		let mut t = Tracker::default();
 		// the request's hash differs from its call's
 		feed(&mut t, Tool::Codex, false, vec![tool("PreToolUse", 10, "a", 1), tool("PreToolUse", 10, "b", 2), ask(11, 9)]);
-		feed(&mut t, Tool::Codex, false, vec![tool("PostToolUse", 20, "b", 2)]);
-		assert_eq!(state(&t, Tool::Codex, 21, false), State::Permission);
-		feed(&mut t, Tool::Codex, false, vec![tool("PostToolUse", 30, "a", 1)]);
-		assert_eq!(state(&t, Tool::Codex, 31, false), State::Working);
+		feed(&mut t, Tool::Codex, false, vec![tool("PostToolUse", 20, "b", 2), tool("PostToolUse", 30, "a", 1)]);
+		assert_eq!(state(&t, Tool::Codex, 31, false), State::Permission);
+		feed(&mut t, Tool::Codex, false, vec![ev("Stop", 40)]);
+		assert_eq!(state(&t, Tool::Codex, 41, false), State::Done);
+	}
+
+	#[test]
+	fn a_request_from_before_the_turn_ended_arriving_late_is_not_pending() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 10, "a", 1), ev("Interrupt", 30), ask(20, 1)]);
+		assert!(!state(&t, Tool::Claude, 31, false).needs_user());
+		// nor a reminder from then
+		let reminder = Event { notification_type: Some("permission_prompt".to_owned()), ..ev("Notification", 25) };
+		feed(&mut t, Tool::Claude, false, vec![reminder]);
+		assert!(!state(&t, Tool::Claude, 31, false).needs_user());
+	}
+
+	#[test]
+	fn a_request_whose_call_start_arrives_late_stays_pending() {
+		// a's PreToolUse is delayed; b finishes meanwhile
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 11, "b", 2), ask(12, 1), tool("PostToolUse", 20, "b", 2)]);
+		assert_eq!(state(&t, Tool::Claude, 21, false), State::Permission);
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 10, "a", 1)]);
+		assert_eq!(state(&t, Tool::Claude, 22, false), State::Permission);
+		feed(&mut t, Tool::Claude, false, vec![tool("PostToolUse", 30, "a", 1)]);
+		assert_eq!(state(&t, Tool::Claude, 31, false), State::Working);
+	}
+
+	#[test]
+	fn claude_reminder_is_settled_by_the_end_of_the_batch_only() {
+		// a reminder stands in for a request of unknown call: another call
+		// finishing does not answer it
+		let mut t = Tracker::default();
+		let reminder = Event { notification_type: Some("permission_prompt".to_owned()), ..ev("Notification", 17) };
+		feed(&mut t, Tool::Claude, false, vec![tool("PreToolUse", 10, "a", 1), tool("PreToolUse", 10, "b", 2), reminder]);
+		feed(&mut t, Tool::Claude, false, vec![tool("PostToolUse", 20, "b", 2)]);
+		assert_eq!(state(&t, Tool::Claude, 21, false), State::Permission);
+		feed(&mut t, Tool::Claude, false, vec![ev("PostToolBatch", 30)]);
+		assert_eq!(state(&t, Tool::Claude, 31, false), State::Working);
 	}
 
 	#[test]
@@ -1042,11 +1198,23 @@ mod tests {
 	}
 
 	#[test]
-	fn codex_rejected_request_goes_when_the_model_moves_on() {
-		// A rejection sends no event; the next call shows the model got its answer.
+	fn codex_rejected_request_goes_when_the_next_batch_starts() {
+		// A rejection sends no event; a call of the next batch shows the model got its answer.
 		let mut t = Tracker::default();
 		feed(&mut t, Tool::Codex, true, vec![tool("PreToolUse", 1_000, "a", 1), ask(1_001, 1), tool("PreToolUse", 9_000, "b", 2)]);
 		assert_eq!(state(&t, Tool::Codex, 9_001, true), State::Working);
+		// its request arriving after that is late, not pending
+		feed(&mut t, Tool::Codex, true, vec![tool("PreToolUse", 20_000, "c", 3), tool("PreToolUse", 30_000, "d", 4), ask(20_001, 3)]);
+		assert_eq!(state(&t, Tool::Codex, 30_001, true), State::Working);
+	}
+
+	#[test]
+	fn codex_calls_of_the_same_batch_do_not_settle_each_other() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Codex, true, vec![tool("PreToolUse", 1_000, "a", 1), ask(1_001, 1), tool("PreToolUse", 1_200, "b", 2)]);
+		assert_eq!(state(&t, Tool::Codex, 4_000, true), State::Reviewing);
+		// and it still turns into waiting for the user when the review takes too long
+		assert_eq!(state(&t, Tool::Codex, 1_001 + REVIEW_OVERDUE_MS, true), State::Permission);
 	}
 
 	// ---- session end
@@ -1106,6 +1274,25 @@ mod tests {
 		assert_eq!(t.sessions["Claude:a"].desktop.as_deref(), Some("D3"));
 	}
 
+	/// A ChatGPT window showing the Codex thread `thread`.
+	fn showing(thread: &str, desktop: &str) -> WindowInfo {
+		WindowInfo { process: "ChatGPT".to_owned(), title: thread.to_owned(), desktop: Some(desktop.to_owned()) }
+	}
+
+	#[test]
+	fn the_chatgpt_window_showing_a_thread_places_it_over_a_terminal() {
+		// DoveBar, put on desktop 5 by a terminal that was in front
+		let mut t = Tracker::default();
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 10), &[terminal("me@server: ~", "D5")], false);
+		t.sessions.get_mut(&key(Tool::Codex, S)).unwrap().name = Some("DoveBar".to_owned());
+		assert!(t.place_by_names(Tool::Codex, &[showing("DoveBar", "D2"), showing("GMK01", "D3")]));
+		assert_eq!(t.sessions[&key(Tool::Codex, S)].desktop.as_deref(), Some("D2"));
+		// and only Codex sessions: a Claude session of that name stays
+		let mut t = tracker(vec![named(Tool::Claude, "a", "DoveBar", Some("D9"))]);
+		assert!(!t.place_by_names(Tool::Codex, &[showing("DoveBar", "D2")]));
+		assert_eq!(t.sessions["Claude:a"].desktop.as_deref(), Some("D9"));
+	}
+
 	#[test]
 	fn same_named_windows_on_different_desktops_place_nothing() {
 		let mut t = tracker(vec![named(Tool::Claude, "a", "GMK01", Some("D5")), named(Tool::Claude, "b", "GMK01", None)]);
@@ -1137,6 +1324,43 @@ mod tests {
 		t.apply(Tool::Claude, ev("Stop", 30), &[], false);
 		t.apply(Tool::Claude, prompt(40), &[window("Other", "D3")], false);
 		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop.as_deref(), Some("D1"));
+	}
+
+	fn terminal(title: &str, desktop: &str) -> WindowInfo {
+		WindowInfo { process: "WindowsTerminal".to_owned(), title: title.to_owned(), desktop: Some(desktop.to_owned()) }
+	}
+
+	#[test]
+	fn a_terminal_in_front_does_not_move_a_session_its_app_placed() {
+		// DoveBar: placed from the ChatGPT window, then a prompt arrives while
+		// an SSH terminal on another desktop is in front
+		let mut t = Tracker::default();
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 10), &[chatgpt("D2")], false);
+		t.apply(Tool::Codex, ev("Stop", 20), &[], false);
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 30), &[terminal("me@server: ~", "D5")], false);
+		assert_eq!(t.sessions[&key(Tool::Codex, S)].desktop.as_deref(), Some("D2"));
+		// its app still moves it
+		t.apply(Tool::Codex, ev("Stop", 40), &[], false);
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 50), &[chatgpt("D4")], false);
+		assert_eq!(t.sessions[&key(Tool::Codex, S)].desktop.as_deref(), Some("D4"));
+		// a session only ever seen in a terminal (a CLI) follows the terminal
+		let mut t = Tracker::default();
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 10), &[terminal("codex", "D3")], false);
+		t.apply(Tool::Codex, ev("Stop", 20), &[], false);
+		t.apply(Tool::Codex, ev("UserPromptSubmit", 30), &[terminal("codex", "D6")], false);
+		assert_eq!(t.sessions[&key(Tool::Codex, S)].desktop.as_deref(), Some("D6"));
+	}
+
+	#[test]
+	fn codex_prompt_sent_while_busy_is_placed_but_claude_one_is_not() {
+		// Codex takes a prompt in at once; Claude Code holds it until it is free
+		for (tool, front, expected) in [(Tool::Codex, chatgpt("D2"), Some("D2")), (Tool::Claude, window("Claude", "D2"), None)] {
+			let mut t = Tracker::default();
+			let busy = self::tool("PreToolUse", 10, "w", 7);
+			feed(&mut t, tool, false, vec![busy]);
+			t.apply(tool, ev("UserPromptSubmit", 20), &[front], false);
+			assert_eq!(t.sessions[&key(tool, S)].desktop.as_deref(), expected, "{tool:?}");
+		}
 	}
 
 	#[test]
@@ -1191,17 +1415,17 @@ mod tests {
 			done(Tool::Claude, "b", "Closed", Some("D4")),
 			done(Tool::Claude, "c", "Deck", Some("D1")), // its window is the untitled one
 		]);
-		let gone = t.sweep(2_000, false, &[window("GMK01", "D3"), window(APP_TITLE, "D1")], &[]);
-		assert_eq!(gone, vec!["Claude Closed"]);
+		let claude = [window("GMK01", "D3"), window(APP_TITLE, "D1")];
+		assert_eq!(t.sweep(2_000, false, &claude, &[], None), vec!["Claude Closed"]);
 		assert_eq!(live(&t), 2);
 		// pressing again finds nothing more
-		assert!(t.sweep(2_001, false, &[window("GMK01", "D3"), window(APP_TITLE, "D1")], &[]).is_empty());
+		assert!(t.sweep(2_001, false, &claude, &[], None).is_empty());
 	}
 
 	#[test]
 	fn a_session_cleared_by_mistake_comes_back_with_its_desktop() {
 		let mut t = tracker(vec![done(Tool::Codex, S, "Here", Some("D4"))]);
-		assert_eq!(t.sweep(2_000, false, &[], &[]).len(), 1);
+		assert_eq!(t.sweep(2_000, false, &[], &[], None).len(), 1);
 		assert!(t.views(2_001, false).is_empty());
 		feed(&mut t, Tool::Codex, false, vec![tool("PreToolUse", 3_000, "a", 1)]);
 		let views = t.views(3_001, false);
@@ -1216,20 +1440,34 @@ mod tests {
 		working.state = State::Working;
 		working.last = 1_500;
 		t.sessions.insert(key(Tool::Codex, "w"), working);
-		assert!(t.sweep(2_000, false, &[], &[]).is_empty());
+		// nothing shows the Codex one either, as far as is known
+		assert!(t.sweep(2_000, false, &[], &[], Some(&[])).is_empty());
 		// working with no sign of life for long enough is fair game
-		assert_eq!(t.sweep(1_500 + STALE_MS + 1, false, &[], &[]).len(), 1);
+		assert_eq!(t.sweep(1_500 + STALE_MS + 1, false, &[], &[], Some(&[])).len(), 1);
 	}
 
 	#[test]
-	fn refresh_judges_codex_by_its_desktop_or_by_quiet_time() {
+	fn refresh_removes_codex_threads_no_chatgpt_window_shows() {
+		// Desktop 1's ChatGPT window shows the review; "Schedule" there was closed.
+		let mut t = tracker(vec![
+			done(Tool::Codex, "a", "Review", Some("D1")),
+			done(Tool::Codex, "b", "Schedule", Some("D1")),
+			done(Tool::Codex, "c", "Elsewhere", Some("D1")), // shown in another desktop's window
+		]);
+		let threads = [showing("Review", "D1"), showing("Elsewhere", "D3")];
+		assert_eq!(t.sweep(2_000, false, &[], &[chatgpt("D1"), chatgpt("D3")], Some(&threads)), vec!["Codex Schedule"]);
+		assert_eq!(live(&t), 2);
+	}
+
+	#[test]
+	fn without_the_threads_refresh_judges_codex_by_its_desktop_or_by_quiet_time() {
 		let mut t = tracker(vec![
 			done(Tool::Codex, "a", "Here", Some("D3")),
 			done(Tool::Codex, "b", "WindowGone", Some("D4")),
 			done(Tool::Codex, "c", "NoDesktop", None),
 		]);
-		assert_eq!(t.sweep(2_000, false, &[], &[chatgpt("D3")]), vec!["Codex WindowGone"]);
-		assert_eq!(t.sweep(1_000 + SWEEP_IDLE_MS + 1, false, &[], &[chatgpt("D3")]), vec!["Codex NoDesktop"]);
+		assert_eq!(t.sweep(2_000, false, &[], &[chatgpt("D3")], None), vec!["Codex WindowGone"]);
+		assert_eq!(t.sweep(1_000 + SWEEP_IDLE_MS + 1, false, &[], &[chatgpt("D3")], None), vec!["Codex NoDesktop"]);
 		assert_eq!(live(&t), 1);
 	}
 

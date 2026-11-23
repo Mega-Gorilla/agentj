@@ -18,11 +18,22 @@ use serde_json::{Map, Value, json};
 /// A handler is ours when its command mentions this.
 const MARKER: &str = "agentj-hook";
 
+/// The shell an agent hands a hook's command to on Windows.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Shell {
+	/// Claude Code: a POSIX shell (Git Bash).
+	Posix,
+	/// Codex: PowerShell, where a quoted path is a string, not a command, and
+	/// has to be called with `&`.
+	PowerShell,
+}
+
 /// One agent's hook file and what goes in it.
 struct Target {
 	name: &'static str,
 	/// Argument telling agentj-hook which agent calls it.
 	arg: &'static str,
+	shell: Shell,
 	file: PathBuf,
 	events: &'static [&'static str],
 	/// Events the agent runs synchronously whatever the handler says.
@@ -41,6 +52,7 @@ fn targets() -> Vec<Target> {
 		Target {
 			name: "Claude Code",
 			arg: "claude",
+			shell: Shell::Posix,
 			file: home().join(".claude").join("settings.json"),
 			events: &[
 				"SessionStart",
@@ -61,19 +73,26 @@ fn targets() -> Vec<Target> {
 		Target {
 			name: "Codex",
 			arg: "codex",
+			shell: Shell::PowerShell,
 			file: codex_home.join("hooks.json"),
 			events: &["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"],
 			sync: &["SessionEnd"], // Codex always runs SessionEnd synchronously
-			after: "In the Codex app, approve the hooks under Settings > Hooks; they do not run until then.",
+			after: "Approve the hooks in Codex: in the app under Settings > Hooks, in the CLI with /hooks. They do not run until then.",
 		},
 	]
 }
 
-/// The command a hook runs: agentj-hook next to this exe. Forward slashes,
-/// because the agents hand the command to a shell that may eat backslashes.
-fn hook_command(exe_dir: &Path, arg: &str) -> String {
+/// The command a hook runs: agentj-hook next to this exe, in `shell`'s
+/// syntax. Forward slashes, because a POSIX shell eats backslashes. A plain
+/// path is left as it is, so the command stays what an agent has approved.
+fn hook_command(exe_dir: &Path, arg: &str, shell: Shell) -> String {
 	let exe = exe_dir.join("agentj-hook.exe").to_string_lossy().replace('\\', "/");
-	if exe.contains(' ') { format!("\"{exe}\" {arg}") } else { format!("{exe} {arg}") }
+	let plain = exe.chars().all(|c| c.is_ascii_alphanumeric() || "/._:-".contains(c));
+	match (plain, shell) {
+		(true, _) => format!("{exe} {arg}"),
+		(false, Shell::Posix) => format!("'{}' {arg}", exe.replace('\'', r"'\''")),
+		(false, Shell::PowerShell) => format!("& '{}' {arg}", exe.replace('\'', "''")),
+	}
 }
 
 fn is_ours(handler: &Value) -> bool {
@@ -127,8 +146,22 @@ fn merged(mut settings: Value, command: Option<&str>, events: &[&str], sync: &[&
 	Ok(settings)
 }
 
-/// Bring one file up to date. Says what was done.
-fn apply(target: &Target, command: Option<&str>) -> Result<String, String> {
+/// What `apply` did to a file.
+struct Done {
+	/// Said to the user.
+	what: String,
+	/// The file was rewritten.
+	changed: bool,
+}
+
+impl Done {
+	fn unchanged(what: String) -> Self {
+		Done { what, changed: false }
+	}
+}
+
+/// Bring one file up to date.
+fn apply(target: &Target, command: Option<&str>) -> Result<Done, String> {
 	let file = &target.file;
 	let before = match std::fs::read_to_string(file) {
 		Ok(text) => Some(text),
@@ -136,7 +169,7 @@ fn apply(target: &Target, command: Option<&str>) -> Result<String, String> {
 		Err(e) => return Err(format!("cannot read {}: {e}", file.display())),
 	};
 	if before.is_none() && command.is_none() {
-		return Ok(format!("nothing to remove ({} does not exist)", file.display()));
+		return Ok(Done::unchanged(format!("nothing to remove ({} does not exist)", file.display())));
 	}
 	let text = before.as_deref().unwrap_or("{}").trim_start_matches('\u{feff}');
 	let old: Value = if text.trim().is_empty() {
@@ -146,7 +179,7 @@ fn apply(target: &Target, command: Option<&str>) -> Result<String, String> {
 	};
 	let new = merged(old.clone(), command, target.events, target.sync).map_err(|e| format!("{}: {e}, left alone", file.display()))?;
 	if new == old && before.is_some() {
-		return Ok(format!("already up to date ({})", file.display()));
+		return Ok(Done::unchanged(format!("already up to date ({})", file.display())));
 	}
 
 	if before.is_some() {
@@ -160,7 +193,8 @@ fn apply(target: &Target, command: Option<&str>) -> Result<String, String> {
 	let mut json = serde_json::to_string_pretty(&new).map_err(|e| e.to_string())?;
 	json.push('\n');
 	std::fs::write(file, json).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
-	Ok(format!("{} ({})", if command.is_some() { "hooks installed" } else { "hooks removed" }, file.display()))
+	let what = format!("{} ({})", if command.is_some() { "hooks installed" } else { "hooks removed" }, file.display());
+	Ok(Done { what, changed: true })
 }
 
 /// `--install-hooks` / `--uninstall-hooks`, for the agents named in `only`
@@ -173,11 +207,12 @@ pub fn run(install: bool, only: &[String]) -> bool {
 	}
 	let mut ok = true;
 	for target in targets().iter().filter(|t| only.is_empty() || only.iter().any(|o| o.eq_ignore_ascii_case(t.arg))) {
-		let command = install.then(|| hook_command(&exe_dir, target.arg));
+		let command = install.then(|| hook_command(&exe_dir, target.arg, target.shell));
 		match apply(target, command.as_deref()) {
 			Ok(done) => {
-				println!("{}: {done}", target.name);
-				if install && !target.after.is_empty() {
+				println!("{}: {}", target.name, done.what);
+				// Only a changed command needs approving again.
+				if install && done.changed && !target.after.is_empty() {
 					println!("  {}", target.after);
 				}
 			}
@@ -266,8 +301,20 @@ mod tests {
 	}
 
 	#[test]
-	fn the_command_is_quoted_only_when_the_path_has_a_space() {
-		assert_eq!(hook_command(Path::new(r"C:\a\b"), "codex"), "C:/a/b/agentj-hook.exe codex");
-		assert_eq!(hook_command(Path::new(r"C:\Users\A B\x"), "claude"), "\"C:/Users/A B/x/agentj-hook.exe\" claude");
+	fn a_plain_path_is_left_as_it_is_for_either_shell() {
+		for shell in [Shell::Posix, Shell::PowerShell] {
+			assert_eq!(hook_command(Path::new(r"C:\a\b"), "codex", shell), "C:/a/b/agentj-hook.exe codex");
+		}
+	}
+
+	#[test]
+	fn a_path_with_a_space_is_quoted_in_each_shells_syntax() {
+		let dir = Path::new(r"C:\Users\A B\x");
+		assert_eq!(hook_command(dir, "claude", Shell::Posix), "'C:/Users/A B/x/agentj-hook.exe' claude");
+		assert_eq!(hook_command(dir, "codex", Shell::PowerShell), "& 'C:/Users/A B/x/agentj-hook.exe' codex");
+		// a quote in the path
+		let dir = Path::new(r"C:\Users\O'Neil\x");
+		assert_eq!(hook_command(dir, "claude", Shell::Posix), r"'C:/Users/O'\''Neil/x/agentj-hook.exe' claude");
+		assert_eq!(hook_command(dir, "codex", Shell::PowerShell), "& 'C:/Users/O''Neil/x/agentj-hook.exe' codex");
 	}
 }
