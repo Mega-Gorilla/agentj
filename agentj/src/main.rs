@@ -1,4 +1,4 @@
-//! OpenDeck plugin: Windows 11 virtual desktops and AI agent sessions.
+//! AgentJ, an OpenDeck plugin: AI agent sessions on the keys, a press away,
 //!
 //! Desktop actions:
 //! - Desktop (slot): slot keys on a device are numbered in reading order
@@ -20,12 +20,16 @@
 //! - AI Summary: how many need you / have answered / are working. Press to
 //!   go to the session that needs you most; press again to go to the next.
 //!
-//! `vdesk.exe --selftest` prints what it reads from Windows and writes
+//! `agentj.exe --selftest` prints what it reads from Windows and writes
 //! preview.html, without switching anything.
+//! `agentj.exe --install-hooks` / `--uninstall-hooks` adds or removes the
+//! Claude Code and Codex hooks (see hooks.rs).
 
 mod agents;
 mod front;
+mod hooks;
 mod keys;
+mod paths;
 mod prefs;
 mod render;
 mod vd;
@@ -39,15 +43,15 @@ use std::time::Duration;
 use openaction::*;
 use tokio::sync::Mutex;
 
-const SLOT: ActionUuid = "local.virtualdesktop.slot";
-const INFO: ActionUuid = "local.virtualdesktop.info";
-const PREV: ActionUuid = "local.virtualdesktop.prev";
-const NEXT: ActionUuid = "local.virtualdesktop.next";
-const AGENT: ActionUuid = "local.virtualdesktop.agent";
-const AGENTS: ActionUuid = "local.virtualdesktop.agents";
-const AGENT_PREV: ActionUuid = "local.virtualdesktop.agentprev";
-const AGENT_NEXT: ActionUuid = "local.virtualdesktop.agentnext";
-const AGENT_REFRESH: ActionUuid = "local.virtualdesktop.agentrefresh";
+const SLOT: ActionUuid = "io.github.mega-gorilla.agentj.slot";
+const INFO: ActionUuid = "io.github.mega-gorilla.agentj.info";
+const PREV: ActionUuid = "io.github.mega-gorilla.agentj.prev";
+const NEXT: ActionUuid = "io.github.mega-gorilla.agentj.next";
+const AGENT: ActionUuid = "io.github.mega-gorilla.agentj.agent";
+const AGENTS: ActionUuid = "io.github.mega-gorilla.agentj.agents";
+const AGENT_PREV: ActionUuid = "io.github.mega-gorilla.agentj.agentprev";
+const AGENT_NEXT: ActionUuid = "io.github.mega-gorilla.agentj.agentnext";
+const AGENT_REFRESH: ActionUuid = "io.github.mega-gorilla.agentj.agentrefresh";
 
 static VD: OnceLock<vd::Handle> = OnceLock::new();
 
@@ -532,7 +536,9 @@ impl Action for AgentAction {
 	}
 
 	async fn did_receive_settings(&self, instance: &Instance, settings: &Self::Settings) -> OpenActionResult<()> {
-		LANES.lock().await.insert(instance.instance_id.clone(), lane_of(settings));
+		let lane = lane_of(settings);
+		log::info!("agent slot settings changed: {} now for {lane:?}", describe(instance));
+		LANES.lock().await.insert(instance.instance_id.clone(), lane);
 		redraw_all().await;
 		Ok(())
 	}
@@ -767,10 +773,9 @@ fn init_logging(to_file: bool) {
 	// Keep the previous run's log: a restart (deploy) would otherwise wipe
 	// what led up to it.
 	let file = to_file
-		.then(|| std::env::current_exe().ok().map(|p| p.with_file_name("vdesk.log")))
-		.flatten()
+		.then(|| paths::data_file("agentj.log"))
 		.and_then(|p| {
-			let _ = std::fs::rename(&p, p.with_file_name("vdesk.prev.log"));
+			let _ = std::fs::rename(&p, p.with_file_name("agentj.prev.log"));
 			std::fs::File::create(p).ok()
 		});
 	let _ = match file {
@@ -887,7 +892,7 @@ fn selftest() -> std::process::ExitCode {
 	grids.push_str(&preview_grid("AI: summary key held (settings)", &setup));
 
 	let html = format!(
-		r#"<!doctype html><meta charset="utf-8"><title>vdesk preview</title><style>body{{background:#111;color:#ccc;font-family:sans-serif;margin:24px}}div{{display:grid;grid-template-columns:repeat(5,96px);gap:12px;margin-bottom:24px}}img{{width:96px;height:96px;border-radius:12px}}h2{{font-size:14px}}</style>{}{grids}"#,
+		r#"<!doctype html><meta charset="utf-8"><title>AgentJ preview</title><style>body{{background:#111;color:#ccc;font-family:sans-serif;margin:24px}}div{{display:grid;grid-template-columns:repeat(5,96px);gap:12px;margin-bottom:24px}}img{{width:96px;height:96px;border-radius:12px}}h2{{font-size:14px}}</style>{}{grids}"#,
 		preview_grid("Default", &desk)
 	);
 	let path = std::env::current_dir().unwrap_or_default().join("preview.html");
@@ -905,9 +910,14 @@ async fn main() -> std::process::ExitCode {
 		init_logging(false);
 		return selftest();
 	}
+	// `--install-hooks [claude] [codex]` / `--uninstall-hooks [claude] [codex]`
+	if let Some(at) = args.iter().position(|a| a == "--install-hooks" || a == "--uninstall-hooks") {
+		let ok = hooks::run(args[at] == "--install-hooks", &args[at + 1..]);
+		return if ok { std::process::ExitCode::SUCCESS } else { std::process::ExitCode::FAILURE };
+	}
 
 	init_logging(true);
-	log::info!("vdesk {} starting", env!("CARGO_PKG_VERSION"));
+	log::info!("agentj {} starting", env!("CARGO_PKG_VERSION"));
 	let _ = VD.set(vd::start());
 	front::start();
 

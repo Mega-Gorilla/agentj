@@ -3,21 +3,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -25,7 +25,7 @@
       "context": "Keypad.0.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -38,21 +38,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -60,7 +60,7 @@
       "context": "Keypad.1.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -73,21 +73,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -95,7 +95,7 @@
       "context": "Keypad.2.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -108,21 +108,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -130,7 +130,7 @@
       "context": "Keypad.3.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -143,21 +143,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -165,7 +165,7 @@
       "context": "Keypad.4.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -178,21 +178,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -200,7 +200,7 @@
       "context": "Keypad.5.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -213,21 +213,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -235,7 +235,7 @@
       "context": "Keypad.6.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -248,21 +248,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -270,7 +270,7 @@
       "context": "Keypad.7.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -283,21 +283,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -305,7 +305,7 @@
       "context": "Keypad.8.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -318,21 +318,21 @@
     {
       "action": {
         "name": "AI Session",
-        "uuid": "local.virtualdesktop.agent",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agent",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
-        "property_inspector": "",
+        "property_inspector": "__PLUGINS__/io.github.mega-gorilla.agentj.sdPlugin/pi/agent.html",
         "controllers": [
           "Keypad"
         ],
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
             "show": false
           }
         ]
@@ -340,7 +340,7 @@
       "context": "Keypad.9.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agent.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agent.svg",
           "show": false
         }
       ],
@@ -389,10 +389,10 @@
     {
       "action": {
         "name": "AI Refresh",
-        "uuid": "local.virtualdesktop.agentrefresh",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agentrefresh",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/refresh.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/refresh.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -403,7 +403,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/refresh.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/refresh.svg",
             "show": false
           }
         ]
@@ -411,7 +411,7 @@
       "context": "Keypad.11.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/refresh.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/refresh.svg",
           "show": false
         }
       ],
@@ -422,10 +422,10 @@
     {
       "action": {
         "name": "AI Page Previous",
-        "uuid": "local.virtualdesktop.agentprev",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agentprev",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/prev.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -436,7 +436,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/prev.svg",
             "show": false
           }
         ]
@@ -444,7 +444,7 @@
       "context": "Keypad.12.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/prev.svg",
           "show": false
         }
       ],
@@ -455,10 +455,10 @@
     {
       "action": {
         "name": "AI Summary",
-        "uuid": "local.virtualdesktop.agents",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agents",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "要対応・返答済・作業中の数。押すと対応を待っているセッションのデスクトップへ、続けて押すと次の対象へ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/agents.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agents.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -469,7 +469,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agents.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agents.svg",
             "show": false
           }
         ]
@@ -477,7 +477,7 @@
       "context": "Keypad.13.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/agents.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/agents.svg",
           "show": false
         }
       ],
@@ -488,10 +488,10 @@
     {
       "action": {
         "name": "AI Page Next",
-        "uuid": "local.virtualdesktop.agentnext",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.agentnext",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/next.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -502,7 +502,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/next.svg",
             "show": false
           }
         ]
@@ -510,7 +510,7 @@
       "context": "Keypad.14.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/next.svg",
           "show": false
         }
       ],

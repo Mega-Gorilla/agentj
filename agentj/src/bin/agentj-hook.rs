@@ -1,8 +1,8 @@
 //! Hook command for Claude Code and Codex: forwards the hook event to the
-//! vdesk plugin running inside OpenDeck.
+//! AgentJ plugin running inside OpenDeck.
 //!
-//!   agent-hook.exe claude   (Claude Code hook, event JSON on stdin)
-//!   agent-hook.exe codex    (Codex hook, event JSON on stdin)
+//!   agentj-hook.exe claude   (Claude Code hook, event JSON on stdin)
+//!   agentj-hook.exe codex    (Codex hook, event JSON on stdin)
 //!
 //! It keeps only the few fields the plugin needs, adds the time of the hook,
 //! and posts it to 127.0.0.1. Tool input is not forwarded, only a hash of it
@@ -35,6 +35,19 @@ fn fnv1a(hash: u64, bytes: &[u8]) -> u64 {
 	bytes.iter().fold(hash, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3))
 }
 
+/// Hash a JSON value so that the order of an object's keys does not matter.
+fn hash_value(hash: u64, value: &serde_json::Value) -> u64 {
+	match value {
+		serde_json::Value::Object(map) => {
+			let mut keys: Vec<&String> = map.keys().collect();
+			keys.sort();
+			keys.into_iter().fold(fnv1a(hash, b"{"), |h, key| hash_value(fnv1a(fnv1a(h, key.as_bytes()), b":"), &map[key]))
+		}
+		serde_json::Value::Array(items) => items.iter().fold(fnv1a(hash, b"["), |h, item| fnv1a(hash_value(h, item), b",")),
+		other => fnv1a(hash, other.to_string().as_bytes()),
+	}
+}
+
 /// A hash that is the same for the PreToolUse, PermissionRequest and
 /// PostToolUse of one tool call. The command alone when there is one: Codex
 /// adds fields to the approval request's input that the others do not have.
@@ -42,10 +55,10 @@ fn call_hash(event: &serde_json::Map<String, serde_json::Value>) -> Option<u64> 
 	let input = event.get("tool_input").filter(|v| !v.is_null())?;
 	let seed = 0xcbf2_9ce4_8422_2325;
 	let hash = match input.get("command").filter(|v| !v.is_null()) {
-		Some(command) => fnv1a(seed, &serde_json::to_vec(command).ok()?),
+		Some(command) => hash_value(seed, command),
 		None => {
 			let name = event.get("tool_name").and_then(|v| v.as_str()).unwrap_or("");
-			fnv1a(fnv1a(seed, name.as_bytes()), &serde_json::to_vec(input).ok()?)
+			hash_value(fnv1a(seed, name.as_bytes()), input)
 		}
 	};
 	Some(hash.max(1)) // 0 means "unknown" to the plugin

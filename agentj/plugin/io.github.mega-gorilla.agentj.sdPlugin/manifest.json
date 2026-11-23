@@ -1,18 +1,18 @@
 {
-	"Name": "Virtual Desktop",
-	"Author": "local",
+	"Name": "AgentJ",
+	"Author": "Mega-Gorilla",
 	"Version": "0.1.0.0",
-	"Description": "Windows 11 の仮想デスクトップ切り替えと、Claude Code / Codex の状態表示",
+	"Description": "Claude Code / Codex のセッションの状態をキーに並べ、押すとそのデスクトップへ飛ぶ。Windows 11 の仮想デスクトップ切り替えも",
 	"Icon": "imgs/plugin",
-	"Category": "Virtual Desktop",
+	"Category": "AgentJ",
 	"CategoryIcon": "imgs/plugin",
-	"CodePathWin": "vdesk.exe",
+	"CodePathWin": "agentj.exe",
 	"SDKVersion": 2,
 	"OS": [{ "Platform": "windows", "MinimumVersion": "10" }],
 	"Software": { "MinimumVersion": "6.0" },
 	"Actions": [
 		{
-			"UUID": "local.virtualdesktop.slot",
+			"UUID": "io.github.mega-gorilla.agentj.slot",
 			"Name": "Desktop",
 			"Tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
 			"Icon": "imgs/slot",
@@ -21,7 +21,7 @@
 			"SupportedInMultiActions": false
 		},
 		{
-			"UUID": "local.virtualdesktop.info",
+			"UUID": "io.github.mega-gorilla.agentj.info",
 			"Name": "Desktop Info",
 			"Tooltip": "現在のデスクトップ番号・総数・名前。押すと再読み込み",
 			"Icon": "imgs/info",
@@ -30,7 +30,7 @@
 			"SupportedInMultiActions": false
 		},
 		{
-			"UUID": "local.virtualdesktop.prev",
+			"UUID": "io.github.mega-gorilla.agentj.prev",
 			"Name": "Previous Desktop",
 			"Tooltip": "左隣のデスクトップへ",
 			"Icon": "imgs/prev",
@@ -39,7 +39,7 @@
 			"SupportedInMultiActions": true
 		},
 		{
-			"UUID": "local.virtualdesktop.next",
+			"UUID": "io.github.mega-gorilla.agentj.next",
 			"Name": "Next Desktop",
 			"Tooltip": "右隣のデスクトップへ",
 			"Icon": "imgs/next",
@@ -48,16 +48,17 @@
 			"SupportedInMultiActions": true
 		},
 		{
-			"UUID": "local.virtualdesktop.agent",
+			"UUID": "io.github.mega-gorilla.agentj.agent",
 			"Name": "AI Session",
 			"Tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+			"PropertyInspectorPath": "pi/agent.html",
 			"Icon": "imgs/agent",
 			"States": [{ "Image": "imgs/agent", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
 			"SupportedInMultiActions": false
 		},
 		{
-			"UUID": "local.virtualdesktop.agents",
+			"UUID": "io.github.mega-gorilla.agentj.agents",
 			"Name": "AI Summary",
 			"Tooltip": "要対応・返答済・作業中の数。押すと対応を待っているセッションのデスクトップへ、続けて押すと次の対象へ",
 			"Icon": "imgs/agents",
@@ -66,7 +67,7 @@
 			"SupportedInMultiActions": false
 		},
 		{
-			"UUID": "local.virtualdesktop.agentprev",
+			"UUID": "io.github.mega-gorilla.agentj.agentprev",
 			"Name": "AI Page Previous",
 			"Tooltip": "AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙",
 			"Icon": "imgs/prev",
@@ -75,7 +76,7 @@
 			"SupportedInMultiActions": false
 		},
 		{
-			"UUID": "local.virtualdesktop.agentrefresh",
+			"UUID": "io.github.mega-gorilla.agentj.agentrefresh",
 			"Name": "AI Refresh",
 			"Tooltip": "名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す",
 			"Icon": "imgs/refresh",
@@ -84,7 +85,7 @@
 			"SupportedInMultiActions": false
 		},
 		{
-			"UUID": "local.virtualdesktop.agentnext",
+			"UUID": "io.github.mega-gorilla.agentj.agentnext",
 			"Name": "AI Page Next",
 			"Tooltip": "AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙",
 			"Icon": "imgs/next",

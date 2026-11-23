@@ -1,6 +1,6 @@
 # Generates the OpenDeck profile files in layout\ (3 rows x 5 keys).
-# deploy.ps1 replaces "__DEVICE__" with the device id and "__OPENDECK__" with
-# OpenDeck's install folder.
+# deploy.ps1 replaces "__DEVICE__" with the device id, "__OPENDECK__" with
+# OpenDeck's install folder and "__PLUGINS__" with its plugins folder.
 #
 #   Default:  [1][2][3][4][5] / [6][7][8][9][10] / [◀][n/N][▶][ ][→AI]
 #   AI:       [Claude x5] / [Codex x5] / [→Default][refresh][◀][summary][▶]
@@ -9,7 +9,7 @@
 #             the columns when they do not fit)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$plugin = 'local.virtualdesktop.sdPlugin'
+$plugin = 'io.github.mega-gorilla.agentj.sdPlugin'
 $img = { param($name) "plugins/$plugin/imgs/$name.svg" }
 
 $defs = @{
@@ -17,7 +17,7 @@ $defs = @{
 	info   = @{ name = 'Desktop Info'; multi = $false; tip = '現在のデスクトップ番号・総数・名前。押すと再読み込み' }
 	prev   = @{ name = 'Previous Desktop'; multi = $true; tip = '左隣のデスクトップへ' }
 	next   = @{ name = 'Next Desktop'; multi = $true; tip = '右隣のデスクトップへ' }
-	agent  = @{ name = 'AI Session'; multi = $false; tip = 'Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ' }
+	agent  = @{ name = 'AI Session'; multi = $false; pi = 'pi/agent.html'; tip = 'Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ' }
 	agents = @{ name = 'AI Summary'; multi = $false; tip = '要対応・返答済・作業中の数。押すと対応を待っているセッションのデスクトップへ、続けて押すと次の対象へ' }
 	agentprev = @{ name = 'AI Page Previous'; multi = $false; icon = 'prev'; tip = 'AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙' }
 	agentnext = @{ name = 'AI Page Next'; multi = $false; icon = 'next'; tip = 'AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙' }
@@ -28,9 +28,9 @@ function New-OwnKey([string]$kind, [int]$pos, $settings = [ordered]@{}) {
 	$d = $defs[$kind]; $i = & $img ($d.icon ?? $kind)
 	[ordered]@{
 		action = [ordered]@{
-			name = $d.name; uuid = "local.virtualdesktop.$kind"; plugin = $plugin; tooltip = $d.tip; icon = $i
+			name = $d.name; uuid = "io.github.mega-gorilla.agentj.$kind"; plugin = $plugin; tooltip = $d.tip; icon = $i
 			disable_automatic_states = $false; visible_in_action_list = $true; supported_in_multi_actions = $d.multi
-			property_inspector = ''; controllers = @('Keypad'); encoder = $null
+			property_inspector = $(if ($d.pi) { "__PLUGINS__/$plugin/$($d.pi)" } else { '' }); controllers = @('Keypad'); encoder = $null
 			states = @([ordered]@{ image = $i; show = $false })
 		}
 		context = "Keypad.$pos.0"
@@ -42,10 +42,10 @@ function New-OwnKey([string]$kind, [int]$pos, $settings = [ordered]@{}) {
 }
 
 # An image from the plugin's imgs\ folder as a data URL. OpenDeck draws a "!"
-# for an image file it cannot load, and its built-in web server refuses files
-# outside its config folder. The plugin folder is a junction to this
-# repository, so its files count as outside. Only matters for keys whose image
-# the plugin does not send itself, i.e. the profile switch keys.
+# for an image file it cannot load, and its built-in web server only serves
+# absolute paths inside its config folder. A data URL needs no server. Only
+# matters for keys whose image the plugin does not send itself, i.e. the
+# profile switch keys.
 function Get-ImageData([string]$name) {
 	$bytes = [IO.File]::ReadAllBytes((Join-Path $root "plugin\$plugin\imgs\$name.svg"))
 	'data:image/svg+xml;base64,' + [Convert]::ToBase64String($bytes)

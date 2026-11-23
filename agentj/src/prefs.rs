@@ -1,5 +1,5 @@
-//! What the user has set on the deck itself. Kept in `prefs.json` next to the
-//! exe, so it survives restarts and re-applied layouts.
+//! What the user has set on the deck itself. Kept in `prefs.json` in the data
+//! folder (`paths`), so it survives restarts, updates and re-applied layouts.
 
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
@@ -43,7 +43,7 @@ impl Prefs {
 static PREFS: LazyLock<Mutex<Prefs>> = LazyLock::new(|| Mutex::new(load()));
 
 fn path() -> Option<PathBuf> {
-	std::env::current_exe().ok().map(|p| p.with_file_name("prefs.json"))
+	Some(crate::paths::data_file("prefs.json"))
 }
 
 fn load() -> Prefs {

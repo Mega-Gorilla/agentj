@@ -3,10 +3,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -17,7 +17,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -25,7 +25,7 @@
       "context": "Keypad.0.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -36,10 +36,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -50,7 +50,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -58,7 +58,7 @@
       "context": "Keypad.1.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -69,10 +69,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -83,7 +83,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -91,7 +91,7 @@
       "context": "Keypad.2.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -102,10 +102,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -116,7 +116,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -124,7 +124,7 @@
       "context": "Keypad.3.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -135,10 +135,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -149,7 +149,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -157,7 +157,7 @@
       "context": "Keypad.4.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -168,10 +168,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -182,7 +182,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -190,7 +190,7 @@
       "context": "Keypad.5.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -201,10 +201,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -215,7 +215,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -223,7 +223,7 @@
       "context": "Keypad.6.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -234,10 +234,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -248,7 +248,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -256,7 +256,7 @@
       "context": "Keypad.7.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -267,10 +267,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -281,7 +281,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -289,7 +289,7 @@
       "context": "Keypad.8.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -300,10 +300,10 @@
     {
       "action": {
         "name": "Desktop",
-        "uuid": "local.virtualdesktop.slot",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.slot",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -314,7 +314,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
             "show": false
           }
         ]
@@ -322,7 +322,7 @@
       "context": "Keypad.9.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/slot.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/slot.svg",
           "show": false
         }
       ],
@@ -333,10 +333,10 @@
     {
       "action": {
         "name": "Previous Desktop",
-        "uuid": "local.virtualdesktop.prev",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.prev",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "左隣のデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/prev.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": true,
@@ -347,7 +347,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/prev.svg",
             "show": false
           }
         ]
@@ -355,7 +355,7 @@
       "context": "Keypad.10.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/prev.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/prev.svg",
           "show": false
         }
       ],
@@ -366,10 +366,10 @@
     {
       "action": {
         "name": "Desktop Info",
-        "uuid": "local.virtualdesktop.info",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.info",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "現在のデスクトップ番号・総数・名前。押すと再読み込み",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/info.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/info.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": false,
@@ -380,7 +380,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/info.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/info.svg",
             "show": false
           }
         ]
@@ -388,7 +388,7 @@
       "context": "Keypad.11.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/info.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/info.svg",
           "show": false
         }
       ],
@@ -399,10 +399,10 @@
     {
       "action": {
         "name": "Next Desktop",
-        "uuid": "local.virtualdesktop.next",
-        "plugin": "local.virtualdesktop.sdPlugin",
+        "uuid": "io.github.mega-gorilla.agentj.next",
+        "plugin": "io.github.mega-gorilla.agentj.sdPlugin",
         "tooltip": "右隣のデスクトップへ",
-        "icon": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+        "icon": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/next.svg",
         "disable_automatic_states": false,
         "visible_in_action_list": true,
         "supported_in_multi_actions": true,
@@ -413,7 +413,7 @@
         "encoder": null,
         "states": [
           {
-            "image": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+            "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/next.svg",
             "show": false
           }
         ]
@@ -421,7 +421,7 @@
       "context": "Keypad.12.0",
       "states": [
         {
-          "image": "plugins/local.virtualdesktop.sdPlugin/imgs/next.svg",
+          "image": "plugins/io.github.mega-gorilla.agentj.sdPlugin/imgs/next.svg",
           "show": false
         }
       ],

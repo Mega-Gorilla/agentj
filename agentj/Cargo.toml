@@ -1,8 +1,8 @@
 [package]
-name = "vdesk"
+name = "agentj"
 version = "0.1.0"
 edition = "2024"
-description = "OpenDeck plugin: switch Windows 11 virtual desktops from a Stream Deck"
+description = "AgentJ: see your Claude Code and Codex sessions on a Stream Deck and jump to them (OpenDeck plugin)"
 publish = false
 
 [dependencies]
@@ -10,7 +10,8 @@ openaction = "2.8"
 winvd = "0.0.49"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "net", "io-util"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# preserve_order: installing hooks must not reorder the user's settings file
+serde_json = { version = "1", features = ["preserve_order"] }
 log = "0.4"
 simplelog = "0.12"
 base64 = "0.22"

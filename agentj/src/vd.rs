@@ -92,7 +92,7 @@ pub fn start() -> Handle {
 	let (state_tx, state_rx) = watch::channel(initial);
 	let listener_tx = tx.clone();
 	std::thread::Builder::new()
-		.name("vdesk-worker".into())
+		.name("agentj-worker".into())
 		.spawn(move || worker(rx, listener_tx, state_tx))
 		.expect("failed to start the virtual desktop thread");
 	Handle { tx, state: state_rx }

@@ -1,6 +1,6 @@
 //! AI agent sessions (Claude Code, Codex), as reported by their hooks.
 //!
-//! Hooks run `agent-hook.exe`, which posts a trimmed event to a small HTTP
+//! Hooks run `agentj-hook.exe`, which posts a trimmed event to a small HTTP
 //! listener on 127.0.0.1. [`Tracker`] turns the events into session states; it
 //! does no I/O, so its rules are unit tested. Hooks run in the background and
 //! are not delivered in order, so every rule goes by the time taken in the
@@ -327,7 +327,7 @@ struct Event {
 	agent_id: Option<String>,
 	agent_type: Option<String>,
 	tool_use_id: Option<String>,
-	/// Hash of the tool call's input, added by agent-hook.
+	/// Hash of the tool call's input, added by agentj-hook.
 	call: Option<u64>,
 	#[serde(default)]
 	ts: u64,
@@ -884,7 +884,7 @@ pub async fn maintain() {
 // ---------------------------------------------------------------- persistence
 
 fn store_path() -> Option<PathBuf> {
-	std::env::current_exe().ok().map(|p| p.with_file_name("agents.json"))
+	Some(crate::paths::data_file("agents.json"))
 }
 
 fn load() -> HashMap<String, Session> {
@@ -1227,7 +1227,7 @@ mod tests {
 
 	#[test]
 	fn a_title_far_from_the_end_of_the_transcript_is_found() {
-		let path = std::env::temp_dir().join(format!("vdesk-title-test-{}.jsonl", std::process::id()));
+		let path = std::env::temp_dir().join(format!("agentj-title-test-{}.jsonl", std::process::id()));
 		let filler = format!("{{\"type\":\"user\",\"text\":\"{}\"}}\n", "x".repeat(64 * 1024));
 		let mut text = String::from("{\"type\":\"custom-title\",\"customTitle\":\"First\",\"sessionId\":\"s\"}\n");
 		for _ in 0..40 {

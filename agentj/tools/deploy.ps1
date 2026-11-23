@@ -1,4 +1,6 @@
-# Installs the built plugin into OpenDeck and restarts it.
+# Installs the packaged plugin (dist\, made by tools\package.ps1) into OpenDeck
+# the way a user install ends up, a real folder in OpenDeck's plugins folder,
+# and restarts OpenDeck.
 # Must run outside the Claude app sandbox (use tools\outside.ps1 from Claude).
 #
 #   -ApplyLayout  also write every profile in layout\ (Default.json, AI.json, ...)
@@ -10,22 +12,15 @@ param([switch]$ApplyLayout)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$pluginName = 'local.virtualdesktop.sdPlugin'
-$pluginSrc = Join-Path $root "plugin\$pluginName"
+$pluginName = 'io.github.mega-gorilla.agentj.sdPlugin'
+$packaged = Join-Path $root "dist\$pluginName"
 $config = Join-Path $env:APPDATA 'opendeck'
+$installed = Join-Path $config "plugins\$pluginName"
 $opendeckDir = Join-Path $env:LOCALAPPDATA 'OpenDeck'
 $opendeck = Join-Path $opendeckDir 'opendeck.exe'
 $log = Join-Path $PSScriptRoot 'deploy.log'
 function Write-Log([string]$m) { Add-Content -LiteralPath $log -Value "$(Get-Date -Format 'HH:mm:ss') $m" -Encoding UTF8 }
 Set-Content -LiteralPath $log -Value "$(Get-Date -Format s) deploy (ApplyLayout=$ApplyLayout)" -Encoding UTF8
-
-function Copy-WithRetry([string]$from, [string]$to) {
-	$last = $null
-	for ($i = 0; $i -lt 20; $i++) {
-		try { Copy-Item -LiteralPath $from -Destination $to -Force; return } catch { $last = $_; Start-Sleep -Milliseconds 250 }
-	}
-	throw "could not replace $to : $last"
-}
 
 function Get-OpenDeckWebView {
 	Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -match 'opendeck' }
@@ -42,15 +37,15 @@ try {
 	if ($shadow) { $shadow | Remove-Item -Force; throw 'running inside an app sandbox; start this through tools\outside.ps1' }
 
 	# Nothing to install: say so before OpenDeck is stopped for it.
-	$built = 'vdesk.exe', 'agent-hook.exe' | ForEach-Object { Join-Path $root "target\release\$_" }
-	$missing = $built | Where-Object { -not (Test-Path -LiteralPath $_) }
-	if ($missing) { throw "not built: $($missing -join ', ') (run cargo build --release)" }
+	$needed = 'manifest.json', 'agentj.exe', 'agentj-hook.exe' | ForEach-Object { Join-Path $packaged $_ }
+	$missing = $needed | Where-Object { -not (Test-Path -LiteralPath $_) }
+	if ($missing) { throw "not packaged: $($missing -join ', ') (run tools\package.ps1)" }
 
 	# 1. stop OpenDeck and the plugin so files can be replaced
 	$stopped = $true
-	Get-Process -Name opendeck*, vdesk -ErrorAction SilentlyContinue | Stop-Process -Force
+	Get-Process -Name opendeck*, agentj -ErrorAction SilentlyContinue | Stop-Process -Force
 	$deadline = (Get-Date).AddSeconds(10)
-	while ((Get-Process -Name opendeck*, vdesk -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
+	while ((Get-Process -Name opendeck*, agentj -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 300 }
 	# OpenDeck draws the keys in a WebView2 window, whose helper processes
 	# outlive it for a moment. Starting OpenDeck again while they are still
 	# going has once left it with the buttons working and nothing drawn on
@@ -61,21 +56,19 @@ try {
 	Start-Sleep -Milliseconds 500
 	Write-Log 'stopped OpenDeck'
 
-	# 2. the plugin exe, and the hook sender that Claude Code / Codex hooks run
-	Copy-WithRetry (Join-Path $root 'target\release\vdesk.exe') (Join-Path $pluginSrc 'vdesk.exe')
-	$hookBin = Join-Path $root 'hook-bin'
-	New-Item -ItemType Directory -Force $hookBin | Out-Null
-	Copy-WithRetry (Join-Path $root 'target\release\agent-hook.exe') (Join-Path $hookBin 'agent-hook.exe')
-	Write-Log 'copied vdesk.exe and agent-hook.exe'
-
-	# 3. link the plugin folder into OpenDeck's plugins folder (once)
-	$link = Join-Path $config "plugins\$pluginName"
-	if (-not (Test-Path -LiteralPath $link)) {
-		New-Item -ItemType Junction -Path $link -Target $pluginSrc | Out-Null
-		Write-Log "linked $link -> $pluginSrc"
+	# 2. the plugin folder. A link left by an earlier way of deploying goes
+	#    first (the link only, never what it points to).
+	$existing = Get-Item -LiteralPath $installed -Force -ErrorAction SilentlyContinue
+	if ($existing -and ($existing.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+		[IO.Directory]::Delete($installed)
+		Write-Log "removed the link at $installed"
 	}
+	# The hook exe may be running for a moment at any time: retry.
+	robocopy $packaged $installed /MIR /R:20 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+	if ($LASTEXITCODE -ge 8) { throw "copying the plugin failed (robocopy $LASTEXITCODE)" }
+	Write-Log "installed $installed"
 
-	# 4. optional: profiles
+	# 3. optional: profiles
 	if ($ApplyLayout) {
 		$device = Get-ChildItem (Join-Path $config 'profiles') -Directory -Filter 'sd-*' | Select-Object -First 1
 		if (-not $device) { throw 'no Stream Deck profile folder found' }
@@ -83,19 +76,19 @@ try {
 		foreach ($layout in Get-ChildItem (Join-Path $root 'layout') -Filter *.json) {
 			$target = Join-Path $device.FullName $layout.Name
 			if (Test-Path -LiteralPath $target) { Copy-Item -LiteralPath $target -Destination "$target.bak-$(Get-Date -Format yyyyMMdd-HHmmss)" }
-			$text = [IO.File]::ReadAllText($layout.FullName).Replace('__DEVICE__', $device.Name).Replace('__OPENDECK__', $installDir)
+			$pluginsDir = (Join-Path $config 'plugins').Replace('\', '/')
+			$text = [IO.File]::ReadAllText($layout.FullName).Replace('__DEVICE__', $device.Name).Replace('__OPENDECK__', $installDir).Replace('__PLUGINS__', $pluginsDir)
 			[IO.File]::WriteAllText($target, $text, (New-Object Text.UTF8Encoding($false)))
 			Write-Log "applied $($layout.Name) to $($device.Name)"
 		}
 	}
-
 }
 catch {
 	$failed = $true
 	Write-Log "ERROR: $_"
 }
 
-# 5. start OpenDeck again (tray only), also after a failure
+# 4. start OpenDeck again (tray only), also after a failure
 if ($stopped -and -not (Get-Process -Name opendeck -ErrorAction SilentlyContinue)) {
 	try {
 		Start-Process -FilePath $opendeck -ArgumentList '--hide'

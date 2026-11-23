@@ -1,6 +1,35 @@
-# vdesk — Stream Deck で Windows 11 の仮想デスクトップを切り替える OpenDeck プラグイン
+# AgentJ — Claude Code / Codex のセッションを Stream Deck に並べて、押して飛ぶ OpenDeck プラグイン
 
-## キー
+J は Jump の J。AI エージェントのセッションの状態（承認待ち・返答済みなど）をキーに並べ、押すとそのセッションのある
+Windows 11 の仮想デスクトップへ移動する。仮想デスクトップそのものを切り替えるキーも持つ。
+
+## 動作条件
+
+- Windows 11 24H2（26100.2605）以降。仮想デスクトップの操作に使う `winvd` の対応範囲
+- [OpenDeck](https://github.com/nekename/OpenDeck) 2.x。Elgato 純正アプリでは試していない
+- Stream Deck。15キー（3×5）の機種で使っている
+- 状態を出したいツール: Claude Code、Codex（どちらか片方でもよい）
+
+## 導入
+
+1. **プラグインを入れる。** `AgentJ-<版>-windows-x64.zip` を OpenDeck のプラグイン画面からファイルを指定して入れる。
+   または、zip の中の `io.github.mega-gorilla.agentj.sdPlugin` フォルダーを `%APPDATA%\opendeck\plugins\` に置いて
+   OpenDeck を起動し直す。
+2. **フックを入れる。** セッションの状態は、Claude Code と Codex のフックから受け取る。PowerShell で:
+
+   ```powershell
+   & "$env:APPDATA\opendeck\plugins\io.github.mega-gorilla.agentj.sdPlugin\agentj.exe" --install-hooks
+   ```
+
+   片方だけなら末尾に `claude` か `codex` を付ける。`~/.claude/settings.json` と `~/.codex/hooks.json` に追記する
+   （下の「フック」を参照）。Codex アプリは「Settings > Hooks」で承認するまでフックを動かさない。
+3. **キーを置く。** OpenDeck の画面で、カテゴリ「AgentJ」のアクションをキーに置く。AI Session キーは、キーの設定で
+   受け持つツール（Claude Code / Codex）を選ぶ。おすすめの配置は下の2つ。
+
+外すときは `agentj.exe --uninstall-hooks` でフックを外してから、OpenDeck でプラグインを削除する。記録と設定は
+`%LOCALAPPDATA%\AgentJ` に残るので、要らなければフォルダーごと消す。
+
+## デスクトップのキー
 
 | アクション | 動き |
 |---|---|
@@ -8,9 +37,9 @@
 | Desktop Info | `現在/総数` と現在の名前。押すと再読み込み |
 | Previous / Next Desktop | 左隣・右隣へ。行き先の名前を表示、端では暗くなる |
 
-デスクトップの追加・削除・名前変更・切り替えは自動でキーに反映されます（winvd の変更通知と、3秒ごとの再読み込み）。
+デスクトップの追加・削除・名前変更・切り替えは自動でキーに反映される（winvd の変更通知と、3秒ごとの再読み込み）。
 
-`layout/Default.json` の配置（3×5）:
+おすすめの配置（3×5。`layout/Default.json`）:
 
 ```
 [1] [2] [3] [4] [5]
@@ -18,11 +47,11 @@
 [◀] [n/N] [▶] [ ] [AI]
 ```
 
-## AI プロファイル（Claude Code / Codex の状態）
+右下の「AI」は、OpenDeck 付属の Starter Pack の「Switch Profile」で、下の AI プロファイルへ切り替える。
 
-Default プロファイル右下の「AI」キーで切り替え（AI 側の左下で戻る）。
+## AI のキー（Claude Code / Codex の状態）
 
-`layout/AI.json` の配置（3×5）:
+おすすめの配置（3×5。`layout/AI.json`）:
 
 ```
 [Claude] [Claude] [Claude] [Claude] [Claude]
@@ -35,8 +64,8 @@ Default プロファイル右下の「AI」キーで切り替え（AI 側の左�
 セッションの無いデスクトップは列を使わない）。5列に入りきらないときは ◀ ▶ でページを切り替える
 （1つのデスクトップがページをまたがないように、収まらない列は次のページへ送る）。
 
-AI Session キーの設定 `"tool": "claude"` / `"codex"` で受け持つ段を決め、各段の k 番目のキーが k 列目になる。
-設定の無い AI Session キーには、段の無いツールのセッション（どのキーにも設定が無ければ全部）を順に並べる。
+AI Session キーは、キーの設定（`"tool": "claude"` / `"codex"`）で受け持つ段を決め、各段の k 番目のキーが k 列目になる。
+ツールを選んでいない AI Session キーには、段の無いツールのセッション（どのキーも選んでいなければ全部）を順に並べる。
 
 | アクション | 動き |
 |---|---|
@@ -48,18 +77,24 @@ AI Session キーの設定 `"tool": "claude"` / `"codex"` で受け持つ段を�
 集計キーの設定画面: 集計キーを長押しすると、AI Session キーがその場でチェックボックスに変わる（プラグインからは
 プロファイルを切り替えられないので、今あるキーの上に描く）。Claude の段の先頭が「Claude」、Codex の段の先頭が
 「Codex」で、押すたびに「移動する」／「移動しない」が切り替わる。集計キーを押すか、20秒触らなければ閉じる。
-選べるのは集計キーの移動先だけで、キーに出す数や各セッションキーの動きは変わらない。設定は
-`plugin\local.virtualdesktop.sdPlugin\prefs.json` に保存する。
+選べるのは集計キーの移動先だけで、キーに出す数や各セッションキーの動きは変わらない。
 
 状態の色: 承認待ち=橙、入力待ち=黄土、返答済み=緑、作業中=黒（目立たせない）、自動審査中=黒に近い灰、待機中=緑、エラー=赤、
 15分音沙汰なしの作業中=灰「応答なし?」。要対応に数えるのは承認待ち・入力待ち・エラーだけ。
 
-- 状態はフックから: `tools/install-hooks.ps1` が `~/.claude/settings.json` と `~/.codex/hooks.json` に
-  `hook-bin/agent-hook.exe` を非同期フックとして追記する。足したり外したりするのは agent-hook.exe の
-  ハンドラーだけで、同じグループにある他のコマンドも残す。内容が変わるときだけ書き換え、元ファイルは
-  `.bak-日時`。外すときは `pwsh tools/install-hooks.ps1 -Uninstall`
-- agent-hook.exe は必要な項目だけを 127.0.0.1:47811 のプラグインへ送り、常に何も出力せず終了コード 0。
-  ツールの入力は送らず、そのハッシュ値だけを送る（どのツール呼び出しの承認要求かを見分けるため）
+## フック
+
+- `agentj.exe --install-hooks` が `~/.claude/settings.json` と `~/.codex/hooks.json`（`CODEX_HOME` があればその下）に、
+  プラグインフォルダーの `agentj-hook.exe` を非同期フックとして追記する。足したり外したりするのは agentj-hook の
+  ハンドラーだけで、同じグループにある他のコマンドも、ファイルの中のキーの順番も残す。内容が変わるときだけ
+  書き換え、元ファイルは `.bak-<時刻>` として残す。外すときは `--uninstall-hooks`
+- agentj-hook.exe は必要な項目だけを 127.0.0.1:47811 のプラグインへ送り、常に何も出力せず終了コード 0。
+  プロンプトやツールの入力は送らず、ツールの入力はそのハッシュ値だけを送る（どのツール呼び出しの承認要求かを
+  見分けるため）。OpenDeck が動いていなくても、エージェントの動作には影響しない
+- Codex アプリはフックを「Settings > Hooks」で承認するまで動かさない。フックの内容が変わるたびに承認し直す
+
+## 状態とデスクトップの決め方
+
 - 非同期フックは届く順番が保証されないので、状態はフック内で取った時刻で判断する。終了したセッションへ
   遅れて届いたイベントでは復活させず、再開後に届いた古い終了イベントでは消さない
 - 承認待ちはツール呼び出しごとに持つ。その呼び出しが終わる（`PostToolUse`）か、ターンやバッチが終わる
@@ -83,63 +118,74 @@ AI Session キーの設定 `"tool": "claude"` / `"codex"` で受け持つ段を�
   ChatGPT のウィンドウ名はどれも「ChatGPT」で見分けられないので、まだ記録が無い Codex スレッドは同じ名前の
   Claude セッションのデスクトップを使う（同名が別々のデスクトップにあるときは使わない）
 - デスクトップが分からないセッションは、キーにも集計にも出さない（押しても移動できないため）。プロンプトや
-  ウィンドウで分かった時点で出る。出していないセッションは、顔ぶれが変わるたびに `vdesk.log` へ
+  ウィンドウで分かった時点で出る。出していないセッションは、顔ぶれが変わるたびにログへ
   `not shown, desktop unknown: [...]` と書く
 - 閉じたセッション: 終了のフック（`SessionEnd`）が届けば消える。届かずに残ったものは、12時間たつか
   AI Refresh キーを押すと消える。消えたセッションの名前とデスクトップは12時間覚えておき、再開されたら
-  引き継ぐ（アプリの再起動で Codex のデスクトップが不明に戻らないようにするため）。AI Refresh は、要対応・作業中・自動審査中のセッションは残し、それ以外を
-  次のように判定する（間違って消しても、生きていれば次のフックで戻る。ただし未読の返答済みは次に入力する
-  まで戻らない）
+  引き継ぐ（アプリの再起動で Codex のデスクトップが不明に戻らないようにするため）。AI Refresh は、
+  要対応・作業中・自動審査中のセッションは残し、それ以外を次のように判定する（間違って消しても、生きていれば
+  次のフックで戻る。ただし未読の返答済みは次に入力するまで戻らない）
   - Claude: セッション名と同じタイトルのウィンドウが無く、記録したデスクトップに「Claude」だけの
     ウィンドウも無ければ消す。ターミナルで動かしている Claude Code はウィンドウで判定できないので、
     作業中でなければ消える
   - Codex: 記録したデスクトップに ChatGPT のウィンドウが無ければ消す。デスクトップが不明なら、
     30分動きが無ければ消す
-- Codex アプリはフックを「Settings > Hooks」で承認するまで動かさない
+
+## 置き場所
+
+| もの | 場所 |
+|---|---|
+| プラグイン本体（`agentj.exe`、`agentj-hook.exe`、画像、設定画面） | `%APPDATA%\opendeck\plugins\io.github.mega-gorilla.agentj.sdPlugin\` |
+| セッションの記録 `agents.json`、集計キーの設定 `prefs.json` | `%LOCALAPPDATA%\AgentJ\` |
+| ログ `agentj.log`（1つ前の起動分は `agentj.prev.log`） | `%LOCALAPPDATA%\AgentJ\` |
+| OpenDeck のログ | `%LOCALAPPDATA%\opendeck\logs\OpenDeck.log` |
+
+記録と設定をプラグインのフォルダーに置かないのは、OpenDeck がプラグインの更新時にフォルダーごと入れ替えるため。
 
 ## 仕組み
 
 - Rust 製の単体 exe。OpenAction（Stream Deck SDK 互換）の Rust ライブラリ `openaction` で OpenDeck とつながる
-- 切り替えは `winvd`（Windows の非公開 COM。24H2 26100.2605 以降、25H2 で動作確認済みのライブラリ）
+- 切り替えは `winvd`（Windows の非公開 COM を使うライブラリ）
 - 直接切り替えに失敗したときは Win+Ctrl+←/→ を送って1つずつ移動する
 - キー画像は SVG を data URL で送る（`src/render.rs`）
 
-## 開発の流れ
+## 開発
 
 ```powershell
-cargo test --release                    # 並べ方・状態の決め方などの単体テスト
+cargo test --release                    # 並べ方・状態の決め方・フックの書き換えなどの単体テスト
 cargo clippy --locked --all-targets -- -D warnings
-cargo build --release
-.\target\release\vdesk.exe --selftest   # 読み取りだけ確認。preview.html にキーの見た目を書き出す
-pwsh tools\outside.ps1 tools\deploy.ps1 # OpenDeck を止めて exe を差し替え、再起動。失敗時は終了コード 1（OpenDeck は起動し直す）
+.\target\release\agentj.exe --selftest  # 読み取りだけ確認。preview.html にキーの見た目を書き出す
+pwsh tools\package.ps1                  # ビルドして dist\ にプラグインフォルダーと配布用 zip を作る
+pwsh tools\outside.ps1 tools\deploy.ps1 # dist\ の中身を OpenDeck のプラグインフォルダーへ入れて、OpenDeck を起動し直す
 pwsh tools\outside.ps1 tools\deploy.ps1 -ApplyLayout   # layout\ の全プロファイル（Default / AI）も上書き（旧ファイルは .bak-日時 で残る）
 pwsh tools\make-layouts.ps1             # layout\*.json を作り直す
-pwsh tools\install-hooks.ps1            # Claude Code / Codex にフックを追加（-Uninstall で削除）
 ```
 
-ログ: `plugin\local.virtualdesktop.sdPlugin\vdesk.log`（プラグイン。1つ前の起動分は `vdesk.prev.log`）、`%LOCALAPPDATA%\opendeck\logs\OpenDeck.log`（OpenDeck）
+`deploy.ps1` は、利用者が zip を入れたときと同じ形（実フォルダーへのコピー）で入れる。失敗時は終了コード 1 を返し、
+OpenDeck は起動し直す。`-ApplyLayout` は15キー（3×5）の機種用で、OpenDeck が止まっている間にプロファイルを書く
+（OpenDeck はプロファイルをメモリに持っているので、動いている間に書いても上書きされる）。
 
 ### Claude デスクトップアプリから作業するときの注意
 
 Claude アプリは MSIX パッケージなので、アプリ内から起動したプロセスが `%APPDATA%` / `%LOCALAPPDATA%` に書くと
-`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\` の私用コピーに振り替えられ、OpenDeck からは見えない。
+`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\` の私用コピーに振り替えられ、OpenDeck からは見えない
+（読むだけなら本物が見える）。
 
-- ソースとプラグイン本体はこの D: のフォルダに置き、OpenDeck の `plugins` フォルダからはジャンクションでつなぐ
 - OpenDeck の再起動や `%APPDATA%\opendeck` への書き込みは `tools\outside.ps1` 経由（WMI で起動するとパッケージの外で動く）
 - OpenDeck をアプリ内から直接起動しない（空の設定で別の OpenDeck が立ち上がる）
 
 ### ボタンは反応するのに何も表示されないとき
 
 OpenDeck はキーの画像を内蔵のウィンドウ（WebView2）で描いて本体へ送る。このウィンドウがうまく立ち上がらないと、
-入力は動くのに表示だけが出ない。`pwsh tools\outside.ps1 tools\deploy.ps1` で OpenDeck を起動し直すと戻る。
-強制終了の直後に起動し直したときに一度起きたので、deploy.ps1 は古い WebView2 のプロセスが消えるのを待ってから起動する。
+入力は動くのに表示だけが出ない。OpenDeck を起動し直すと戻る。強制終了の直後に起動し直したときに一度起きたので、
+deploy.ps1 は古い WebView2 のプロセスが消えるのを待ってから起動する。
 
 ### キーが「!」になるとき
 
 OpenDeck は、画像を読み込めなかったキーに「!」を描く。ファイルを指す画像は内蔵サーバー（127.0.0.1:57118）経由で
-読むが、このサーバーは設定フォルダーの外のファイルを返さない（403）。プラグインフォルダーはこのリポジトリへの
-ジャンクションなので、中の画像ファイルは「外」と判定される。
+読むが、このサーバーは絶対パスで、かつ設定フォルダー（`%APPDATA%\opendeck`）の中にあるファイルしか返さない。
 
 - プラグインが自分で画像を送るキー（Desktop、AI Session など）は data URL なので影響しない
 - プロファイルに画像を書くキー（プロファイル切り替えキー）は、`tools\make-layouts.ps1` が SVG を data URL で埋め込む
-- OpenDeck の編集画面のアクション一覧では、このプラグインのアイコンが「!」になる（表示だけの問題）
+- プラグインフォルダーをジャンクションやシンボリックリンクで別の場所へつなぐと、リンク先で判定されて
+  「設定フォルダーの外」になり、アイコンと設定画面が読めなくなる。実フォルダーとして置く
