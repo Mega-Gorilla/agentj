@@ -27,7 +27,7 @@ pub fn info(current: Option<(usize, &str)>, count: usize) -> String {
 	let Some((index, name)) = current else {
 		return svg("#0F172A", &centered(72.0, 40.0, "#64748B", 700, "…"));
 	};
-	let label = if name.trim().is_empty() { format!("デスクトップ {}", index + 1) } else { name.trim().to_owned() };
+	let label = if name.trim().is_empty() { format!("Desktop {}", index + 1) } else { name.trim().to_owned() };
 	let (text, size) = fit(&label, 24.0, 15.0);
 	let inner = format!(
 		"{}{}",

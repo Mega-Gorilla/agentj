@@ -65,8 +65,9 @@ fn lane_of(settings: &serde_json::Value) -> Option<Tool> {
 /// its key could not take the user anywhere. It shows up once a prompt or a
 /// window tells where it is.
 fn agent_view(snap: &Snapshot) -> Vec<(View, usize)> {
+	let sessions = if crate::demo::on() { demo_sessions(snap) } else { super::visible() };
 	let mut unplaced = Vec::new();
-	let mut list: Vec<_> = super::visible()
+	let mut list: Vec<_> = sessions
 		.into_iter()
 		.filter_map(|s| match snap.ids.iter().position(|x| Some(x) == s.desktop.as_ref()) {
 			Some(index) => Some((s, index)),
@@ -86,6 +87,35 @@ fn agent_view(snap: &Snapshot) -> Vec<(View, usize)> {
 		*last = unplaced;
 	}
 	list
+}
+
+const MINUTE: u64 = 60_000;
+
+/// Made-up sessions, one of each state, on the first five desktops, in display
+/// order: (tool, name, state, desktop index, time in that state). Shown in
+/// demo mode (`crate::demo`) and in the `--selftest` preview.
+const SAMPLES: [(Tool, &str, State, usize, u64); 9] = [
+	(Tool::Claude, "inbox", State::Done, 0, 25 * MINUTE),
+	(Tool::Claude, "web-app", State::Permission, 1, MINUTE / 2),
+	(Tool::Codex, "web-app", State::Working, 1, 4 * MINUTE),
+	(Tool::Claude, "api", State::Working, 2, 2 * MINUTE),
+	(Tool::Codex, "api-tests", State::Reviewing, 2, 0),
+	(Tool::Claude, "docs", State::Done, 3, 6 * MINUTE),
+	(Tool::Codex, "docs-review", State::Done, 3, 12 * MINUTE),
+	(Tool::Claude, "mobile", State::Input, 4, 3 * MINUTE),
+	(Tool::Codex, "mobile", State::Idle, 4, 40 * MINUTE),
+];
+
+/// The made-up sessions for demo mode, on the desktops there are.
+fn demo_sessions(snap: &Snapshot) -> Vec<View> {
+	let now = super::now_ms();
+	SAMPLES
+		.into_iter()
+		.filter_map(|(tool, label, state, desktop, age)| {
+			let desktop = snap.ids.get(desktop)?.clone();
+			Some(View { tool, label: label.to_owned(), state, stale: false, since: now.saturating_sub(age), desktop: Some(desktop) })
+		})
+		.collect()
 }
 
 /// Sessions last left out of `agent_view` for want of a desktop.
@@ -451,31 +481,22 @@ const TOUR_KEEP: Duration = Duration::from_secs(10);
 
 // ---- preview for --selftest
 
-/// The suggested 3x5 layout (`layout/AI.json`) with made-up sessions, one of
-/// each state, page by page; then the summary key's settings screen. Each is
-/// a title and 15 key images.
+/// The suggested 3x5 layout (`layout/AI.json`) with the made-up sessions,
+/// plus a stalled one on a sixth desktop to fill a second page; then the
+/// summary key's settings screen. Each is a title and 15 key images.
 pub fn preview() -> Vec<(String, Vec<String>)> {
 	// As if desktop 3 were showing.
-	let sample = |tool, name, state, desktop, elapsed_ms| AgentCard {
+	let card = |(tool, name, state, desktop, age): (Tool, &'static str, State, usize, u64)| AgentCard {
 		tool,
 		name,
 		state,
 		stale: false,
 		desktop,
-		elapsed_ms,
+		elapsed_ms: age,
 		here: desktop == 2,
 	};
-	let samples = [
-		sample(Tool::Claude, "Unity", State::Working, 1, 60_000),
-		sample(Tool::Codex, "Unity", State::Reviewing, 1, 4_000),
-		sample(Tool::Claude, "GMK01", State::Working, 2, 3 * 60_000),
-		sample(Tool::Codex, "MatterMost", State::Done, 2, 12 * 60_000),
-		sample(Tool::Claude, "GMK02", State::Done, 3, 40_000),
-		sample(Tool::Claude, "Fujitu01", State::Done, 4, 2 * 3_600_000),
-		sample(Tool::Codex, "見積もり整理レセコン", State::Input, 4, 5 * 60_000),
-		AgentCard { stale: true, ..sample(Tool::Claude, "Epson01", State::Working, 5, 20 * 60_000) },
-		sample(Tool::Codex, "DoveBar", State::Permission, 6, 40_000),
-	];
+	let mut samples: Vec<AgentCard> = SAMPLES.into_iter().map(card).collect();
+	samples.push(AgentCard { stale: true, ..card((Tool::Claude, "infra", State::Working, 5, 20 * MINUTE)) });
 	// Claude row, Codex row, then [→Default][refresh][◀][summary][▶].
 	let lanes: Vec<Option<Tool>> = [Some(Tool::Claude); 5].into_iter().chain([Some(Tool::Codex); 5]).collect();
 	let placed: Vec<(Tool, usize)> = samples.iter().map(|s| (s.tool, s.desktop)).collect();

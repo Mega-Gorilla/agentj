@@ -10,27 +10,23 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $plugin = 'io.github.mega-gorilla.agentj.sdPlugin'
-$img = { param($name) "plugins/$plugin/imgs/$name.svg" }
 
-$defs = @{
-	slot   = @{ name = 'Desktop'; multi = $false; tip = '並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯' }
-	info   = @{ name = 'Desktop Info'; multi = $false; tip = '現在のデスクトップ番号・総数・名前。押すと再読み込み' }
-	prev   = @{ name = 'Previous Desktop'; multi = $true; tip = '左隣のデスクトップへ' }
-	next   = @{ name = 'Next Desktop'; multi = $true; tip = '右隣のデスクトップへ' }
-	agent  = @{ name = 'AI Session'; multi = $false; pi = 'pi/agent.html'; tip = 'Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ' }
-	agents = @{ name = 'AI Summary'; multi = $false; tip = '要対応・返答済・作業中の数。押すと対応を待っているセッションのデスクトップへ、続けて押すと次の対象へ' }
-	agentprev = @{ name = 'AI Page Previous'; multi = $false; icon = 'prev'; tip = 'AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙' }
-	agentnext = @{ name = 'AI Page Next'; multi = $false; icon = 'next'; tip = 'AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙' }
-	agentrefresh = @{ name = 'AI Refresh'; multi = $false; icon = 'refresh'; tip = '名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す' }
-}
+# Each action's name, tooltip, icon and so on come from the plugin's manifest,
+# so they are written in one place only.
+$manifest = Get-Content -LiteralPath (Join-Path $root "plugin\$plugin\manifest.json") -Raw | ConvertFrom-Json
+$actions = @{}
+foreach ($a in $manifest.Actions) { $actions[$a.UUID] = $a }
 
 function New-OwnKey([string]$kind, [int]$pos, $settings = [ordered]@{}) {
-	$d = $defs[$kind]; $i = & $img ($d.icon ?? $kind)
+	$uuid = "io.github.mega-gorilla.agentj.$kind"
+	$a = $actions[$uuid]
+	if (-not $a) { throw "no action $uuid in the manifest" }
+	$i = "plugins/$plugin/$($a.Icon).svg"
 	[ordered]@{
 		action = [ordered]@{
-			name = $d.name; uuid = "io.github.mega-gorilla.agentj.$kind"; plugin = $plugin; tooltip = $d.tip; icon = $i
-			disable_automatic_states = $false; visible_in_action_list = $true; supported_in_multi_actions = $d.multi
-			property_inspector = $(if ($d.pi) { "__PLUGINS__/$plugin/$($d.pi)" } else { '' }); controllers = @('Keypad'); encoder = $null
+			name = $a.Name; uuid = $uuid; plugin = $plugin; tooltip = $a.Tooltip; icon = $i
+			disable_automatic_states = $false; visible_in_action_list = $true; supported_in_multi_actions = [bool]$a.SupportedInMultiActions
+			property_inspector = $(if ($a.PropertyInspectorPath) { "__PLUGINS__/$plugin/$($a.PropertyInspectorPath)" } else { '' }); controllers = @('Keypad'); encoder = $null
 			states = @([ordered]@{ image = $i; show = $false })
 		}
 		context = "Keypad.$pos.0"

@@ -17,6 +17,17 @@ people who run several AI coding agents at once, one project per Windows 11 virt
 
 "J" is for Jump.
 
+![The AI profile: Claude Code sessions on the top row, Codex sessions below, one column per virtual desktop](docs/screenshot-agents.png)
+
+*The AI profile. Each column is a virtual desktop (its number top right); the red frame marks the desktop you are on.
+`web-app` on desktop 2 waits for your approval, so the summary key counts it under "Needs you".*
+
+![The Desktop profile: one key per virtual desktop with its name, and previous / current / next](docs/screenshot-desktops.png)
+
+*The Desktop profile: one key per virtual desktop, the current one in blue.*
+
+(Both pictures are from OpenDeck's window, with made-up session and desktop names.)
+
 ## Requirements
 
 - Windows 11 24H2 (build 26100.2605) or later
@@ -96,8 +107,8 @@ yet is no longer shown until then.
 
 ### 4. Check it works
 
-Send a prompt in Claude Code or Codex. Within a moment its key shows the session's name and **working**, then
-**answered** when it is done.
+Send a prompt in Claude Code or Codex. Within a moment its key shows the session's name and **Working**, then
+**Answered** when it is done.
 
 A session shows up once AgentJ knows its virtual desktop. It learns this from the window you send a prompt from, or,
 for the Claude desktop app, from the window titled with the session's name.

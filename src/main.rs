@@ -9,8 +9,8 @@
 //!   through `desktops::get()`.
 //!
 //! `deck` holds what every key needs and redraws both parts; `render` the
-//! drawing helpers; `paths` where data files live. This file only starts
-//! things.
+//! drawing helpers; `paths` where data files live; `demo` whether the keys
+//! show made-up content for screenshots. This file only starts things.
 //!
 //! `agentj.exe --selftest` prints what it reads from Windows and writes
 //! preview.html, without switching anything.
@@ -19,6 +19,7 @@
 
 mod agents;
 mod deck;
+mod demo;
 mod desktops;
 mod paths;
 mod render;

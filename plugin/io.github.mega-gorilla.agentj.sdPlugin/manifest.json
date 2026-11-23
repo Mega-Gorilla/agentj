@@ -2,7 +2,7 @@
 	"Name": "AgentJ",
 	"Author": "Mega-Gorilla",
 	"Version": "0.1.0.0",
-	"Description": "Claude Code / Codex のセッションの状態をキーに並べ、押すとそのデスクトップへ飛ぶ。Windows 11 の仮想デスクトップ切り替えも",
+	"Description": "Your Claude Code and Codex sessions on the keys: see which need you, and press one to jump to its Windows 11 virtual desktop. Also switches virtual desktops.",
 	"Icon": "imgs/plugin",
 	"Category": "AgentJ",
 	"CategoryIcon": "imgs/plugin",
@@ -14,7 +14,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.slot",
 			"Name": "Desktop",
-			"Tooltip": "並べた順に1番目・2番目…のデスクトップへ切り替え。デスクトップが無い枠は消灯",
+			"Tooltip": "One virtual desktop per key, numbered in reading order. Shows its name; press to switch to it. Keys beyond the number of desktops go dark.",
 			"Icon": "imgs/slot",
 			"States": [{ "Image": "imgs/slot", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -23,7 +23,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.info",
 			"Name": "Desktop Info",
-			"Tooltip": "現在のデスクトップ番号・総数・名前。押すと再読み込み",
+			"Tooltip": "The current desktop / the number of desktops, and its name. Press to read them again.",
 			"Icon": "imgs/info",
 			"States": [{ "Image": "imgs/info", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -32,7 +32,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.prev",
 			"Name": "Previous Desktop",
-			"Tooltip": "左隣のデスクトップへ",
+			"Tooltip": "Switch to the desktop on the left.",
 			"Icon": "imgs/prev",
 			"States": [{ "Image": "imgs/prev", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -41,7 +41,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.next",
 			"Name": "Next Desktop",
-			"Tooltip": "右隣のデスクトップへ",
+			"Tooltip": "Switch to the desktop on the right.",
 			"Icon": "imgs/next",
 			"States": [{ "Image": "imgs/next", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -50,7 +50,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.agent",
 			"Name": "AI Session",
-			"Tooltip": "Claude Code / Codex のセッションを表示（設定 tool が claude / codex の段は、デスクトップごとに1列）。色で状態、右上はデスクトップ番号。押すとそのデスクトップへ",
+			"Tooltip": "One Claude Code / Codex session per key: its state by colour, its desktop top right. Press to jump to it. Choose the tool in the key's settings.",
 			"PropertyInspectorPath": "pi/agent.html",
 			"Icon": "imgs/agent",
 			"States": [{ "Image": "imgs/agent", "ShowTitle": false }],
@@ -60,7 +60,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.agents",
 			"Name": "AI Summary",
-			"Tooltip": "要対応・返答済・作業中の数。押すと対応を待っているセッションのデスクトップへ、続けて押すと次の対象へ",
+			"Tooltip": "How many sessions need you / have answered / are working. Press: jump to the next one waiting for you. Hold: choose which tools it jumps to.",
 			"Icon": "imgs/agents",
 			"States": [{ "Image": "imgs/agents", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -69,7 +69,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.agentprev",
 			"Name": "AI Page Previous",
-			"Tooltip": "AI セッションの前のページへ。行き先のページ番号を表示、要対応があれば橙",
+			"Tooltip": "The previous page of AI sessions. Shows the page it goes to; orange when a session there needs you.",
 			"Icon": "imgs/prev",
 			"States": [{ "Image": "imgs/prev", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -78,7 +78,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.agentrefresh",
 			"Name": "AI Refresh",
-			"Tooltip": "名前とウィンドウを今すぐ読み直し、閉じたと見られるセッションを消す",
+			"Tooltip": "Read sessions and windows again now: put Codex sessions on the desktop of the ChatGPT window showing them, and clear sessions that look closed.",
 			"Icon": "imgs/refresh",
 			"States": [{ "Image": "imgs/refresh", "ShowTitle": false }],
 			"Controllers": ["Keypad"],
@@ -87,7 +87,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.agentnext",
 			"Name": "AI Page Next",
-			"Tooltip": "AI セッションの次のページへ。行き先のページ番号を表示、要対応があれば橙",
+			"Tooltip": "The next page of AI sessions. Shows the page it goes to; orange when a session there needs you.",
 			"Icon": "imgs/next",
 			"States": [{ "Image": "imgs/next", "ShowTitle": false }],
 			"Controllers": ["Keypad"],

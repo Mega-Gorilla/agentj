@@ -6,10 +6,10 @@ use crate::render::{centered, fit, svg};
 fn elapsed(ms: u64) -> String {
 	let minutes = ms / 60_000;
 	match minutes {
-		0 => "今".to_owned(),
-		1..=59 => format!("{minutes}分"),
-		60..=1439 => format!("{}時間", minutes / 60),
-		_ => format!("{}日", minutes / 1440),
+		0 => "now".to_owned(),
+		1..=59 => format!("{minutes}m"),
+		60..=1439 => format!("{}h", minutes / 60),
+		_ => format!("{}d", minutes / 1440),
 	}
 }
 
@@ -29,20 +29,20 @@ pub struct AgentCard<'a> {
 /// One AI session: tool, desktop number, name, state and how long it has been in it.
 pub fn agent(card: &AgentCard) -> String {
 	let (background, label, label_colour) = if card.stale {
-		("#27272A", "応答なし?", "#A1A1AA")
+		("#27272A", "Stalled?", "#A1A1AA")
 	} else {
 		match card.state {
-			State::Permission => ("#C2410C", "承認待ち", "#FFFFFF"),
-			State::Input => ("#B45309", "入力待ち", "#FFFFFF"),
-			State::Error => ("#991B1B", "エラー", "#FFFFFF"),
+			State::Permission => ("#C2410C", "Approve", "#FFFFFF"),
+			State::Input => ("#B45309", "Input", "#FFFFFF"),
+			State::Error => ("#991B1B", "Error", "#FFFFFF"),
 			// Green = an answer is waiting to be read. Working needs nobody,
 			// so it stays dark.
-			State::Done => ("#15803D", "返答済み", "#DCFCE7"),
-			State::Working => ("#000000", "作業中", "#94A3B8"),
-			State::Reviewing => ("#1A1A1A", "自動審査中", "#A1A1AA"),
+			State::Done => ("#15803D", "Answered", "#DCFCE7"),
+			State::Working => ("#000000", "Working", "#94A3B8"),
+			State::Reviewing => ("#1A1A1A", "Reviewing", "#A1A1AA"),
 			// Green like Done: a session that is open and free to take a prompt.
 			// (A resumed session is Idle even if its last answer is unread.)
-			State::Idle => ("#15803D", "待機中", "#DCFCE7"),
+			State::Idle => ("#15803D", "Idle", "#DCFCE7"),
 		}
 	};
 	let (tool, mut tool_colour) = match card.tool {
@@ -77,14 +77,14 @@ pub fn agent(card: &AgentCard) -> String {
 /// Counts across all sessions; turns orange when something needs the user.
 pub fn summary(attention: usize, done: usize, working: usize) -> String {
 	let background = if attention > 0 { "#7C2D12" } else { "#0F172A" };
-	let rows = [("要対応", attention, "#FB923C"), ("返答済", done, "#4ADE80"), ("作業中", working, "#94A3B8")];
+	let rows = [("Needs you", attention, "#FB923C"), ("Answered", done, "#4ADE80"), ("Working", working, "#94A3B8")];
 	let inner: String = rows
 		.iter()
 		.enumerate()
 		.map(|(i, (label, count, colour))| {
 			let y = 36.0 + i as f32 * 38.0;
 			format!(
-				r##"<circle cx="20" cy="{y}" r="8" fill="{colour}"/><text x="36" y="{y}" font-size="22" fill="#E2E8F0" dominant-baseline="central">{label}</text><text x="134" y="{y}" font-size="28" font-weight="700" fill="#FFFFFF" text-anchor="end" dominant-baseline="central">{count}</text>"##
+				r##"<circle cx="18" cy="{y}" r="7" fill="{colour}"/><text x="31" y="{y}" font-size="17" fill="#E2E8F0" dominant-baseline="central">{label}</text><text x="136" y="{y}" font-size="26" font-weight="700" fill="#FFFFFF" text-anchor="end" dominant-baseline="central">{count}</text>"##
 			)
 		})
 		.collect();
@@ -99,9 +99,9 @@ pub fn jump_option(tool: Tool, on: bool) -> String {
 		Tool::Codex => ("Codex", "#9FE7C9"),
 	};
 	let (fill, stroke, mark, label, label_colour) = if on {
-		("#16A34A", "#16A34A", r##"<path d="M58 70 L68 80 L87 59" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>"##, "移動する", "#4ADE80")
+		("#16A34A", "#16A34A", r##"<path d="M58 70 L68 80 L87 59" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>"##, "Jump: on", "#4ADE80")
 	} else {
-		("none", "#94A3B8", "", "移動しない", "#94A3B8")
+		("none", "#94A3B8", "", "Jump: off", "#94A3B8")
 	};
 	let inner = format!(
 		r##"{}<rect x="50" y="48" width="44" height="44" rx="8" fill="{fill}" stroke="{stroke}" stroke-width="4"/>{mark}{}"##,
@@ -115,9 +115,9 @@ pub fn jump_option(tool: Tool, on: bool) -> String {
 pub fn settings_close() -> String {
 	let inner = format!(
 		"{}{}{}",
-		centered(34.0, 22.0, "#94A3B8", 700, "集計キーの"),
-		centered(66.0, 30.0, "#FFFFFF", 700, "移動先"),
-		centered(112.0, 20.0, "#FBBF24", 700, "押して閉じる")
+		centered(34.0, 20.0, "#94A3B8", 700, "Summary key"),
+		centered(66.0, 28.0, "#FFFFFF", 700, "jumps to"),
+		centered(112.0, 19.0, "#FBBF24", 700, "Press to close")
 	);
 	svg("#334155", &inner)
 }
@@ -126,11 +126,12 @@ pub fn settings_close() -> String {
 /// cleared, shown for a moment afterwards.
 pub fn refresh(removed: Option<usize>) -> String {
 	let (label, colour) = match removed {
-		None => ("更新".to_owned(), "#94A3B8"),
-		Some(0) => ("消去なし".to_owned(), "#E2E8F0"),
-		Some(n) => (format!("{n}件 消去"), "#4ADE80"),
+		None => ("Refresh".to_owned(), "#94A3B8"),
+		Some(0) => ("None closed".to_owned(), "#E2E8F0"),
+		Some(n) => (format!("{n} cleared"), "#4ADE80"),
 	};
-	let inner = format!("{}{}", centered(56.0, 60.0, "#E2E8F0", 400, "↻"), centered(112.0, 22.0, colour, 700, &label));
+	let (label, size) = fit(&label, 22.0, 14.0);
+	let inner = format!("{}{}", centered(56.0, 60.0, "#E2E8F0", 400, "↻"), centered(112.0, size, colour, 700, &label));
 	svg("#1E293B", &inner)
 }
 

@@ -37,8 +37,21 @@ fn slot_index(slots: &[Arc<Instance>], instance: &Instance) -> Option<usize> {
 		.position(|s| s.instance_id == instance.instance_id)
 }
 
+/// Desktop names shown in demo mode (`crate::demo`), by position.
+const DEMO_NAMES: [&str; 6] = ["", "web-app", "api", "docs", "mobile", "design"];
+
+/// The desktops as the keys show them: in demo mode, under made-up names.
+fn shown(snap: &Snapshot) -> Snapshot {
+	if !crate::demo::on() {
+		return snap.clone();
+	}
+	let names = (0..snap.count()).map(|i| DEMO_NAMES.get(i).copied().unwrap_or("").to_owned()).collect();
+	Snapshot { names, ..snap.clone() }
+}
+
 /// Draw every visible desktop key.
 pub async fn draw(snap: &Snapshot) {
+	let snap = &shown(snap);
 	let mut seen_per_device: HashMap<String, usize> = HashMap::new();
 	for slot in ordered(SLOT).await {
 		let counter = seen_per_device.entry(slot.device_id.clone()).or_insert(0);

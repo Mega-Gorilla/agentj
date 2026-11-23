@@ -275,7 +275,7 @@ impl Session {
 			.as_deref()
 			.and_then(|c| std::path::Path::new(c).file_name())
 			.map(|n| n.to_string_lossy().into_owned())
-			.unwrap_or_else(|| "(名前なし)".to_owned())
+			.unwrap_or_else(|| "(no name)".to_owned())
 	}
 
 	fn is_stale(&self, now: u64) -> bool {

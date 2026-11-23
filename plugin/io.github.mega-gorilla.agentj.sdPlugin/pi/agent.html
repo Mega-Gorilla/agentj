@@ -13,19 +13,15 @@
 </style>
 </head>
 <body>
-	<label for="tool">Sessions on this key / このキーに出すセッション</label>
+	<label for="tool">Sessions on this key</label>
 	<select id="tool">
 		<option value="claude">Claude Code</option>
 		<option value="codex">Codex</option>
-		<option value="">Any tool without a row of its own / 専用の段が無いツール</option>
+		<option value="">Any tool without a row of its own</option>
 	</select>
 	<p>
 		Keys set to the same tool form a row; the k-th key of each row is column k, one column per virtual desktop that has sessions.
 		Put the Claude Code row above the Codex row to see a desktop's two sessions one above the other.
-	</p>
-	<p>
-		同じツールを選んだキーが1つの段になり、各段の k 番目のキーが k 列目になります（セッションのあるデスクトップごとに1列）。
-		Claude Code の段を Codex の段の上に置くと、同じデスクトップの2つが上下に並びます。
 	</p>
 <script>
 	// Stream Deck / OpenAction property inspector: the host calls this once
