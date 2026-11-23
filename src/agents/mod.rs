@@ -1,4 +1,6 @@
-//! AI agent sessions (Claude Code, Codex), as reported by their hooks.
+//! The agent part: AI agent sessions (Claude Code, Codex), as reported by
+//! their hooks, and the keys that show them and jump to them (`keys`). It
+//! uses the desktop part only through `desktops::get()`.
 //!
 //! Hooks run `agentj-hook.exe`, which posts a trimmed event to a small HTTP
 //! listener on 127.0.0.1. [`Tracker`] turns the events into session states; it
@@ -32,7 +34,15 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 
-use crate::winutil::{self, WindowInfo};
+pub mod front;
+pub mod hooks;
+pub mod keys;
+mod layout;
+mod prefs;
+mod render;
+pub mod winutil;
+
+use self::winutil::WindowInfo;
 
 pub const PORT: u16 = 47811;
 /// A session still "working" with no event for this long is shown as unknown
@@ -623,7 +633,7 @@ fn handle(tool: Tool, mut event: Event) {
 	// For a prompt: the windows it may have been typed into, likeliest first.
 	let recent = if event.hook_event_name == "UserPromptSubmit" {
 		let (delay, within) = PROMPT_TIMING_MS.iter().find(|(t, ..)| *t == tool).map_or((0, 0), |(_, d, w)| (*d, *w));
-		let recent = crate::front::around(event.ts.saturating_sub(delay), event.ts.saturating_sub(within));
+		let recent = front::around(event.ts.saturating_sub(delay), event.ts.saturating_sub(within));
 		let seen: Vec<_> = recent.iter().map(|w| (w.process.as_str(), w.title.as_str())).collect();
 		log::info!("{tool:?} prompt, in front around then (likeliest first): {seen:?}");
 		recent

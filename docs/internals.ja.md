@@ -1,33 +1,37 @@
-# AgentJ — Claude Code / Codex のセッションを Stream Deck に並べて、押して飛ぶ OpenDeck プラグイン
+# AgentJ の仕組み（開発者向け）
 
-J は Jump の J。AI エージェントのセッションの状態（承認待ち・返答済みなど）をキーに並べ、押すとそのセッションのある
-Windows 11 の仮想デスクトップへ移動する。仮想デスクトップそのものを切り替えるキーも持つ。
+何をするプラグインか、導入と外し方は [README.ja.md](../README.ja.md)（英語版は [README.md](../README.md)）を参照。
+ここには、キーの細かい動き、状態とデスクトップの決め方、コードの構成、開発の手順を書く。
 
-## 動作条件
+## コードの構成
 
-- Windows 11 24H2（26100.2605）以降。仮想デスクトップの操作に使う `winvd` の対応範囲
-- [OpenDeck](https://github.com/nekename/OpenDeck) 2.x。Elgato 純正アプリでは試していない
-- Stream Deck。15キー（3×5）の機種で使っている
-- 状態を出したいツール: Claude Code、Codex（どちらか片方でもよい）
+プラグインは1つ（`agentj.exe`）だが、中はデスクトップ用とエージェント用の2つに分けてある。
 
-## 導入
+```
+src/
+├─ main.rs          起動するだけ（2つの部分をつなぐ）
+├─ deck.rs          どのキーにも要るもの（画像の送信、並び順、描き直し）
+├─ render.rs        描画の共通部品
+├─ paths.rs         データの置き場所
+├─ desktops/        デスクトップ用（エージェントのことを知らない）
+│  ├─ mod.rs        仮想デスクトップの読み取りと切り替え
+│  ├─ keys.rs       Desktop / Desktop Info / ◀ ▶ のキー
+│  ├─ render.rs     デスクトップのキーの見た目
+│  └─ sendkeys.rs   Win+Ctrl+←/→ での切り替え（予備）
+├─ agents/          エージェント用（デスクトップ側は desktops::get() だけを使う）
+│  ├─ mod.rs        セッションの状態（フックの受け取りと判定）
+│  ├─ keys.rs       AI Session / 集計 / 更新 / ページ送りのキー
+│  ├─ layout.rs     キーへの並べ方と、集計キーの移動先の決め方
+│  ├─ render.rs     AI のキーの見た目
+│  ├─ front.rs      手前のウィンドウの履歴
+│  ├─ hooks.rs      フックの導入（--install-hooks / --uninstall-hooks）
+│  ├─ prefs.rs      集計キーの設定
+│  └─ winutil.rs    ウィンドウの一覧
+└─ bin/agentj-hook.rs   フックから呼ばれ、イベントをプラグインへ送る小さな exe
+```
 
-1. **プラグインを入れる。** `AgentJ-<版>-windows-x64.zip` を OpenDeck のプラグイン画面からファイルを指定して入れる。
-   または、zip の中の `io.github.mega-gorilla.agentj.sdPlugin` フォルダーを `%APPDATA%\opendeck\plugins\` に置いて
-   OpenDeck を起動し直す。
-2. **フックを入れる。** セッションの状態は、Claude Code と Codex のフックから受け取る。PowerShell で:
-
-   ```powershell
-   & "$env:APPDATA\opendeck\plugins\io.github.mega-gorilla.agentj.sdPlugin\agentj.exe" --install-hooks
-   ```
-
-   片方だけなら末尾に `claude` か `codex` を付ける。`~/.claude/settings.json` と `~/.codex/hooks.json` に追記する
-   （下の「フック」を参照）。Codex アプリは「Settings > Hooks」で承認するまでフックを動かさない。
-3. **キーを置く。** OpenDeck の画面で、カテゴリ「AgentJ」のアクションをキーに置く。AI Session キーは、キーの設定で
-   受け持つツール（Claude Code / Codex）を選ぶ。おすすめの配置は下の2つ。
-
-外すときは `agentj.exe --uninstall-hooks` でフックを外してから、OpenDeck でプラグインを削除する。記録と設定は
-`%LOCALAPPDATA%\AgentJ` に残るので、要らなければフォルダーごと消す。
+2つを両方知っているのは `main.rs`（起動）と `deck.rs`（描き直し）だけ。2つのプラグインに分けたくなったときは、
+`desktops/` と `agents/` をそれぞれ持っていけばよい。
 
 ## デスクトップのキー
 
@@ -147,7 +151,7 @@ AI Session キーは、キーの設定（`"tool": "claude"` / `"codex"`）で受
 - Rust 製の単体 exe。OpenAction（Stream Deck SDK 互換）の Rust ライブラリ `openaction` で OpenDeck とつながる
 - 切り替えは `winvd`（Windows の非公開 COM を使うライブラリ）
 - 直接切り替えに失敗したときは Win+Ctrl+←/→ を送って1つずつ移動する
-- キー画像は SVG を data URL で送る（`src/render.rs`）
+- キー画像は SVG を data URL で送る（共通部品は `src/render.rs`、見た目は `src/desktops/render.rs` と `src/agents/render.rs`）
 
 ## 開発
 

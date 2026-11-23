@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::winutil::{self, WindowInfo};
+use super::winutil::{self, WindowInfo};
 
 /// How often the window in front is looked at.
 const POLL: Duration = Duration::from_millis(250);
@@ -29,7 +29,7 @@ pub fn start() {
 			let key = winutil::foreground_key();
 			if key != last {
 				if let Some(window) = winutil::foreground() {
-					let now = crate::agents::now_ms();
+					let now = super::now_ms();
 					let mut history = HISTORY.lock().unwrap();
 					history.push_back((now, window));
 					trim(&mut history, now.saturating_sub(KEEP_MS));

@@ -1,4 +1,6 @@
-//! Virtual desktop access.
+//! The desktop part: Windows 11 virtual desktops, and the keys that show and
+//! switch them (`keys`). It knows nothing of AI agents; the agent part uses
+//! only `get()` to see the desktops and switch between them.
 //!
 //! Every winvd (undocumented Windows COM) call runs on one dedicated thread.
 //! That thread publishes the current list of desktops through a `watch`
@@ -6,10 +8,27 @@
 //! notifications and also re-reads every few seconds, so the keys stay right
 //! even if a notification is missed or explorer.exe restarts.
 
+pub mod keys;
+mod render;
+mod sendkeys;
+
+use std::sync::OnceLock;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
 use tokio::sync::watch;
+
+static HANDLE: OnceLock<Handle> = OnceLock::new();
+
+/// Start the worker thread; once, before anything uses `get()`.
+pub fn init() {
+	let _ = HANDLE.set(start());
+}
+
+/// The desktops: what there is, and switching between them.
+pub fn get() -> &'static Handle {
+	HANDLE.get().expect("desktops::init was not called")
+}
 
 /// How often the desktop list is re-read when nothing else happens.
 const POLL: Duration = Duration::from_secs(3);
@@ -83,7 +102,7 @@ impl Handle {
 }
 
 /// Start the worker thread. The first snapshot is read before this returns.
-pub fn start() -> Handle {
+fn start() -> Handle {
 	let (tx, rx) = mpsc::channel::<Msg>();
 	let initial = read().unwrap_or_else(|e| {
 		log::warn!("could not read desktops at startup: {e:?}");
@@ -174,7 +193,7 @@ fn switch(target: Target, snap: &Snapshot) {
 			// The COM interface changes between Windows builds. The keyboard
 			// shortcut always works, it just has to step one desktop at a time.
 			log::warn!("direct switch failed ({e:?}), stepping with Win+Ctrl+arrow");
-			crate::keys::step(index as i64 - snap.current as i64);
+			sendkeys::step(index as i64 - snap.current as i64);
 		}
 	}
 }
