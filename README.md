@@ -130,3 +130,11 @@ pwsh tools\package.ps1
 [step 1](#1-install-the-plugin).
 
 How AgentJ works inside, and notes for development, are in [docs/internals.ja.md](docs/internals.ja.md) (Japanese).
+
+## License
+
+AgentJ is free software, licensed under the GNU General Public License, version 3 or (at your option) any later
+version (GPL-3.0-or-later). See [LICENSE](LICENSE).
+
+AgentJ is not affiliated with Elgato, Anthropic or OpenAI. Stream Deck is a trademark of Corsair Memory, Inc.; Claude
+is a trademark of Anthropic; Codex is a trademark of OpenAI.

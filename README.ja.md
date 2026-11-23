@@ -131,3 +131,11 @@ pwsh tools\package.ps1
 [手順 1](#1-プラグインを入れる)と同じように入れます。
 
 AgentJ の中の仕組みと、開発のための覚え書きは [docs/internals.ja.md](docs/internals.ja.md) にあります。
+
+## ライセンス
+
+AgentJ はフリーソフトウェアで、GNU 一般公衆利用許諾書の第3版、または（お好みで）それ以降の版
+（GPL-3.0-or-later）で利用できます。条文は [LICENSE](LICENSE) にあります（英語）。
+
+AgentJ は Elgato、Anthropic、OpenAI とは関係のない個人のプロジェクトです。Stream Deck は Corsair Memory, Inc. の、
+Claude は Anthropic の、Codex は OpenAI の商標です。
