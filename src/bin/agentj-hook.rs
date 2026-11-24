@@ -7,7 +7,8 @@
 //! It keeps only the few fields the plugin needs, adds the time of the hook,
 //! and posts it to 127.0.0.1. Tool input is not forwarded, only a hash of it
 //! (`call`), which lets the plugin tell which tool call an approval request
-//! belongs to. It always exits 0 and prints nothing, so it can never block,
+//! belongs to. Of Claude Code's background tasks only the type and status of
+//! each are forwarded, not their commands or descriptions. It always exits 0 and prints nothing, so it can never block,
 //! slow down or change what the agent does, even when OpenDeck is not running.
 #![windows_subsystem = "windows"]
 
@@ -64,6 +65,15 @@ fn call_hash(event: &serde_json::Map<String, serde_json::Value>) -> Option<u64> 
 	Some(hash.max(1)) // 0 means "unknown" to the plugin
 }
 
+/// Claude Code's Stop: the background tasks still in flight, each cut down to
+/// its type and status. None when the event has no such list (other events,
+/// Codex, older Claude Code).
+fn background_tasks(event: &serde_json::Map<String, serde_json::Value>) -> Option<serde_json::Value> {
+	let tasks = event.get("background_tasks")?.as_array()?;
+	let keep = |task: &serde_json::Value, key: &str| task.get(key).filter(|v| v.is_string()).cloned().unwrap_or_default();
+	Some(tasks.iter().map(|t| serde_json::json!({ "type": keep(t, "type"), "status": keep(t, "status") })).collect())
+}
+
 fn main() {
 	// Never hang around, whatever happens with stdin or the socket.
 	std::thread::spawn(|| {
@@ -91,6 +101,9 @@ fn main() {
 	if let Some(call) = call_hash(&event) {
 		out.insert("call".to_owned(), call.into());
 	}
+	if let Some(tasks) = background_tasks(&event) {
+		out.insert("background_tasks".to_owned(), tasks);
+	}
 	let Ok(body) = serde_json::to_vec(&out) else { return };
 
 	let addr = SocketAddr::from(([127, 0, 0, 1], PORT));
@@ -109,11 +122,30 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-	use super::call_hash;
+	use super::{background_tasks, call_hash};
+
+	fn event(json: &str) -> serde_json::Map<String, serde_json::Value> {
+		let serde_json::Value::Object(event) = serde_json::from_str(json).unwrap() else { panic!("not an object") };
+		event
+	}
 
 	fn hash(json: &str) -> Option<u64> {
-		let serde_json::Value::Object(event) = serde_json::from_str(json).unwrap() else { panic!("not an object") };
-		call_hash(&event)
+		call_hash(&event(json))
+	}
+
+	#[test]
+	fn background_tasks_keep_only_their_type_and_status() {
+		let stop = event(
+			r#"{"hook_event_name":"Stop","background_tasks":[
+				{"id":"t1","type":"shell","status":"running","description":"build","command":"cargo build --secret"},
+				{"id":"t2","type":"subagent","status":"running","description":"look up docs","agent_type":"Explore"}]}"#,
+		);
+		assert_eq!(
+			background_tasks(&stop),
+			Some(serde_json::json!([{ "type": "shell", "status": "running" }, { "type": "subagent", "status": "running" }]))
+		);
+		assert_eq!(background_tasks(&event(r#"{"hook_event_name":"Stop","background_tasks":[]}"#)), Some(serde_json::json!([])));
+		assert_eq!(background_tasks(&event(r#"{"hook_event_name":"Stop"}"#)), None);
 	}
 
 	#[test]

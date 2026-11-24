@@ -100,7 +100,7 @@ const SAMPLES: [(Tool, &str, State, usize, u64); 9] = [
 	(Tool::Codex, "web-app", State::Working, 1, 4 * MINUTE),
 	(Tool::Claude, "api", State::Working, 2, 2 * MINUTE),
 	(Tool::Codex, "api-tests", State::Reviewing, 2, 0),
-	(Tool::Claude, "docs", State::Done, 3, 6 * MINUTE),
+	(Tool::Claude, "docs", State::Background, 3, 6 * MINUTE),
 	(Tool::Codex, "docs-review", State::Done, 3, 12 * MINUTE),
 	(Tool::Claude, "mobile", State::Input, 4, 3 * MINUTE),
 	(Tool::Codex, "mobile", State::Idle, 4, 40 * MINUTE),
@@ -217,7 +217,7 @@ pub async fn draw(snap: &Snapshot) {
 		let count = |f: &dyn Fn(&View) -> bool| sessions.iter().filter(|(s, _)| f(s)).count();
 		let attention = count(&|s| s.state.needs_user());
 		let done = count(&|s| s.state == State::Done);
-		let working = count(&|s| matches!(s.state, State::Working | State::Reviewing) && !s.stale);
+		let working = count(&|s| matches!(s.state, State::Working | State::Background | State::Reviewing) && !s.stale);
 		for key in summary_keys {
 			let svg = if setup { render::settings_close() } else { render::summary(attention, done, working) };
 			send(&key, svg).await;

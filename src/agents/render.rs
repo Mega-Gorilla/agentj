@@ -39,6 +39,9 @@ pub fn agent(card: &AgentCard) -> String {
 			// so it stays dark.
 			State::Done => ("#15803D", "Answered", "#DCFCE7"),
 			State::Working => ("#000000", "Working", "#94A3B8"),
+			// The turn is over but work it started goes on: dark like
+			// Working, with a blue tint to tell the two apart.
+			State::Background => ("#0B1A2E", "Background", "#7DD3FC"),
 			State::Reviewing => ("#1A1A1A", "Reviewing", "#A1A1AA"),
 			// Green like Done: a session that is open and free to take a prompt.
 			// (A resumed session is Idle even if its last answer is unread.)
@@ -49,7 +52,7 @@ pub fn agent(card: &AgentCard) -> String {
 		Tool::Claude => ("Claude", "#F4A98A"),
 		Tool::Codex => ("Codex", "#9FE7C9"),
 	};
-	if !card.stale && !matches!(card.state, State::Working | State::Reviewing) {
+	if !card.stale && !matches!(card.state, State::Working | State::Background | State::Reviewing) {
 		// The tool colours do not read well on the strong state colours.
 		tool_colour = "#FFFFFF";
 	}

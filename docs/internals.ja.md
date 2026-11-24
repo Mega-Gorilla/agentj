@@ -96,12 +96,13 @@ AI Session キーは、キーの設定（`"tool": "claude"` / `"codex"`）で受
 | エラー | Error | 赤 |
 | 返答済み | Answered | 緑 |
 | 作業中 | Working | 黒（目立たせない） |
+| バックグラウンド処理中（Claude Code） | Background | 青みのある黒 |
 | 自動審査中 | Reviewing | 黒に近い灰 |
 | 待機中 | Idle | 緑 |
 | 15分音沙汰なしの作業中 | Stalled? | 灰 |
 
 状態のあとに経過時間（`now`、`5m`、`2h`、`3d`）を付ける。要対応（集計キーの「Needs you」）に数えるのは
-承認待ち・入力待ち・エラーだけ。
+承認待ち・入力待ち・エラーだけ。集計キーの「Working」には、作業中・自動審査中・バックグラウンド処理中を数える。
 
 ## フック
 
@@ -133,6 +134,13 @@ AI Session キーは、キーの設定（`"tool": "claude"` / `"codex"`）で受
   - Claude Code の「承認待ちのまま約6秒」の通知（`permission_prompt`）は、どの呼び出しのものか分からないので、
     バッチかターンの終わりまで残す
   「承認された」を知らせるフックはどちらにも無いので、承認後に長く動くツールは終わるまで承認待ちのままになる
+- バックグラウンド処理中（Claude Code だけ）: Claude Code の `Stop` は、まだ動いているバックグラウンドの作業
+  （シェル、サブエージェント、Monitor など）を `background_tasks` で渡す。agentj-hook はその種類と状態だけを
+  送り（コマンドや説明は送らない）、1つでもあればその `Stop` を返答済みではなく「Background」にする。作業が
+  終わると Claude Code は自分でターンを始め（`UserPromptSubmit` も来る）、作業中に戻る。このプロンプトは
+利用者が打ったものではないので、そのときの最前面のウィンドウからデスクトップを記録しない。待つ間はフックが来ないので
+  「Stalled?」にはせず、AI Refresh でも消さない。予約した処理（`session_crons`、`/loop` など）は何時間も
+  待つことがあるので数えない。この項目の無い古い Claude Code と Codex では、これまでどおり返答済みになる
 - Codex の自動審査（`~/.codex/config.toml` の `approvals_reviewer = "auto_review"` / `"guardian_subagent"`）
   では、承認要求は利用者ではなく審査役に回る。フックからは見分けられないので、この設定のときは
   「自動審査中」と表示して要対応に数えない。2分たっても解決しなければ承認待ちに切り替える（アプリが

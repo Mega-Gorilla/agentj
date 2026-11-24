@@ -90,6 +90,9 @@ pub enum Tool {
 pub enum State {
 	Idle,
 	Working,
+	/// Claude Code: the turn is over, but background work it started (a
+	/// shell, a subagent, a monitor...) is still going and will wake it up.
+	Background,
 	/// Codex: an approval request is with the automatic reviewer. Nothing for
 	/// the user to do.
 	Reviewing,
@@ -109,7 +112,8 @@ impl State {
 			State::Done => 3,
 			State::Reviewing => 4,
 			State::Working => 5,
-			State::Idle => 6,
+			State::Background => 6,
+			State::Idle => 7,
 		}
 	}
 
@@ -403,8 +407,28 @@ struct Event {
 	source: Option<String>,
 	/// Hash of the tool call's input, added by agentj-hook.
 	call: Option<u64>,
+	/// Claude Code's Stop: the background tasks still in flight (type and
+	/// status only, see agentj-hook). None from Codex and older Claude Code.
+	background_tasks: Option<Vec<BackgroundTask>>,
 	#[serde(default)]
 	ts: u64,
+}
+
+#[derive(Default, Deserialize)]
+struct BackgroundTask {
+	#[serde(default, rename = "type")]
+	kind: String,
+	#[serde(default)]
+	status: String,
+}
+
+impl Event {
+	/// A turn ended with background work still to wake the session up.
+	/// Every task listed counts, whatever its status: Claude Code lists only
+	/// work in flight, and one that has just finished still wakes it to report.
+	fn waits_on_background(&self) -> bool {
+		self.background_tasks.as_ref().is_some_and(|tasks| !tasks.is_empty())
+	}
 }
 
 /// What an event says the session is doing, apart from approvals.
@@ -420,6 +444,7 @@ fn next_state(event: &Event) -> Option<State> {
 			Some("idle_prompt") => Some(State::Done),
 			_ => None,
 		},
+		"Stop" if event.waits_on_background() => Some(State::Background),
 		"Stop" => Some(State::Done),
 		"StopFailure" => Some(State::Error),
 		"Interrupt" => Some(State::Idle),
@@ -527,7 +552,9 @@ impl Tracker {
 		if event.hook_event_name == "UserPromptSubmit" {
 			session.prompted = true;
 			session.name_checked = 0; // a first prompt is when names usually appear
-			let busy = matches!(session.state, State::Working | State::Input) || !session.asks.is_empty();
+			// In Background, the prompt is most likely Claude Code waking the
+			// session up when its background work is done: nobody typed it.
+			let busy = matches!(session.state, State::Working | State::Input | State::Background) || !session.asks.is_empty();
 			let held = hook_waits_for_busy_session(tool) && busy && !session.is_stale(event.ts);
 			// The hook comes a moment after the prompt was sent (about 2 s for
 			// Codex), and the user may have clicked another window since, so
@@ -540,7 +567,7 @@ impl Tracker {
 			});
 			let label = session.label();
 			match (typed_in, recent.first()) {
-				(_, Some(front)) if held => log::info!("{tool:?} {label}: prompt held while busy, desktop of {:?} not used", front.title),
+				(_, Some(front)) if held => log::info!("{tool:?} {label}: prompt held while busy or sent by Claude Code itself, desktop of {:?} not used", front.title),
 				(Some((desktop, evidence, window)), _) => {
 					if !session.place(desktop, evidence) && session.desktop.as_deref() != Some(desktop) {
 						log::info!(
@@ -560,6 +587,10 @@ impl Tracker {
 		}
 
 		session.track_calls(&event);
+		if let Some(tasks) = event.background_tasks.as_ref().filter(|t| !t.is_empty()) {
+			let tasks: Vec<String> = tasks.iter().map(|t| format!("{} {}", t.kind, t.status)).collect();
+			log::info!("{tool:?} {}: turn over, background work going on: {tasks:?}", session.label());
+		}
 		if event.ts >= session.last {
 			session.last = event.ts;
 			if let Some(state) = next_state(&event)
@@ -674,7 +705,8 @@ impl Tracker {
 	) -> Vec<String> {
 		let closed = |s: &Session| {
 			let state = s.shown(now, codex_auto_review).0;
-			if s.ended.is_some() || state.needs_user() || state == State::Reviewing || (state == State::Working && !s.is_stale(now)) {
+			let at_work = matches!(state, State::Reviewing | State::Background) || (state == State::Working && !s.is_stale(now));
+			if s.ended.is_some() || state.needs_user() || at_work {
 				return false;
 			}
 			match s.tool {
@@ -1444,6 +1476,39 @@ mod tests {
 		assert!(t.sweep(2_000, false, &[], &[], Some(&[])).is_empty());
 		// working with no sign of life for long enough is fair game
 		assert_eq!(t.sweep(1_500 + STALE_MS + 1, false, &[], &[], Some(&[])).len(), 1);
+	}
+
+	fn stop_with(ts: u64, tasks: &[(&str, &str)]) -> Event {
+		let tasks = tasks.iter().map(|(kind, status)| BackgroundTask { kind: (*kind).to_owned(), status: (*status).to_owned() });
+		Event { background_tasks: Some(tasks.collect()), ..ev("Stop", ts) }
+	}
+
+	#[test]
+	fn a_turn_ending_with_background_work_going_on_is_background_until_it_wakes_up() {
+		let mut t = Tracker::default();
+		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 10), stop_with(20, &[("shell", "running"), ("subagent", "running")])]);
+		assert_eq!(state(&t, Tool::Claude, 21, false), State::Background);
+		// the work is done: Claude Code wakes the session up for a turn of its own
+		// ... and nobody typed that prompt, so whatever is in front says nothing
+		t.apply(Tool::Claude, ev("UserPromptSubmit", 30), &[terminal("me@server: ~", "D5")], false);
+		assert_eq!(state(&t, Tool::Claude, 31, false), State::Working);
+		assert_eq!(t.sessions[&key(Tool::Claude, S)].desktop, None);
+		feed(&mut t, Tool::Claude, false, vec![stop_with(40, &[])]);
+		assert_eq!(state(&t, Tool::Claude, 41, false), State::Done);
+		// Codex and older Claude Code send no list: a plain answer
+		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 50), ev("Stop", 60)]);
+		assert_eq!(state(&t, Tool::Claude, 61, false), State::Done);
+	}
+
+	#[test]
+	fn background_work_never_looks_stalled_and_refresh_keeps_it() {
+		let mut t = tracker(vec![named(Tool::Claude, "b", "Build", Some("D2"))]);
+		feed(&mut t, Tool::Claude, false, vec![Event { session_id: "b".to_owned(), ..stop_with(1_000, &[("shell", "running")]) }]);
+		let later = 1_000 + 2 * STALE_MS;
+		let view = t.views(later, false).into_iter().find(|v| v.label == "Build").unwrap();
+		assert_eq!((view.state, view.stale), (State::Background, false));
+		// no window shows it (e.g. it runs in a terminal), and still it stays
+		assert!(t.sweep(later, false, &[], &[], Some(&[])).is_empty());
 	}
 
 	#[test]

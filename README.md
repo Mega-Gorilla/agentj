@@ -8,7 +8,8 @@ AgentJ is a plugin for [OpenDeck](https://github.com/nekename/OpenDeck), the ope
 people who run several AI coding agents at once, one project per Windows 11 virtual desktop:
 
 - Every Claude Code / Codex session gets a key showing its name, its desktop and its state: waiting for your approval,
-  answered, working, error, and for Claude Code also waiting for input (an MCP form or link). Codex sends no event when
+  answered, working, error, and for Claude Code also waiting for input (an MCP form or link) and background (the turn
+is over, but a background command or subagent it started is still running). Codex sends no event when
   it asks you a question, so such a Codex session shows as working.
 - Press a session's key and Windows switches to the virtual desktop it runs on.
 - The summary key counts what needs you, and takes you to the session that has waited longest; press it again for the
