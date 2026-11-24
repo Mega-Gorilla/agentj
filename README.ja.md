@@ -1,5 +1,7 @@
 # AgentJ
 
+![AgentJ: AI エージェントをキー1つで](docs/social-preview.png)
+
 **Claude Code と Codex のセッションを Stream Deck のキーに1つずつ並べ、押すとそのセッションへ飛ぶ。**
 
 [English](README.md)

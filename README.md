@@ -1,5 +1,7 @@
 # AgentJ
 
+![AgentJ: your AI agents, one key away](docs/social-preview.png)
+
 **Your Claude Code and Codex sessions on a Stream Deck, one key each. Press a key to jump to that session.**
 
 [日本語](README.ja.md)
