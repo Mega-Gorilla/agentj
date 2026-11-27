@@ -126,6 +126,8 @@ impl State {
 /// A session as shown on the deck.
 #[derive(Clone, Debug)]
 pub struct View {
+	/// Which session it is, for `hide`.
+	pub id: String,
 	pub tool: Tool,
 	pub label: String,
 	pub state: State,
@@ -135,8 +137,23 @@ pub struct View {
 	pub since: u64,
 	/// Virtual desktop GUID, if known.
 	pub desktop: Option<String>,
+	pub detail: Detail,
 }
 
+/// More about a session, for the detail screen of its key.
+#[derive(Clone, Debug, Default)]
+pub struct Detail {
+	/// The last part of its working folder.
+	pub folder: Option<String>,
+	/// What put it on its desktop.
+	pub placed_by: &'static str,
+	/// The kind of each piece of background work going on (Background only).
+	pub background: Vec<String>,
+	/// Approval requests open.
+	pub asks: usize,
+	/// Newest hook time seen (ms since epoch); 0 for none.
+	pub last: u64,
+}
 /// What a recorded desktop rests on, weakest first. A prompt only moves a
 /// session to another desktop on evidence at least as strong as what put it
 /// where it is.
@@ -150,6 +167,16 @@ enum Evidence {
 	Terminal,
 	/// The agent's own app: a prompt sent from it, or its window.
 	App,
+}
+
+impl Evidence {
+	fn label(self) -> &'static str {
+		match self {
+			Evidence::Unknown => "Unknown",
+			Evidence::Terminal => "Terminal",
+			Evidence::App => "App window",
+		}
+	}
 }
 
 /// An approval request that has not been answered as far as we know.
@@ -213,6 +240,9 @@ struct Session {
 	/// Codex: when the latest tool call started (see `BATCH_GAP_MS`).
 	#[serde(default)]
 	latest_start: u64,
+	/// The kind of each piece of background work the last turn left going.
+	#[serde(default)]
+	background: Vec<String>,
 	/// When the session ended (or was cleared away by the refresh key). It
 	/// is kept, unseen, so that events from before then are dropped and so
 	/// that its name and desktop are still known if it is resumed.
@@ -245,6 +275,7 @@ impl Session {
 			finished: Vec::new(),
 			settled: 0,
 			latest_start: 0,
+			background: Vec::new(),
 			ended: None,
 			name_checked: 0,
 			title_offset: 0,
@@ -275,11 +306,12 @@ impl Session {
 		if let Some(name) = self.name.as_deref().filter(|n| !n.trim().is_empty()) {
 			return name.trim().to_owned();
 		}
-		self.cwd
-			.as_deref()
-			.and_then(|c| std::path::Path::new(c).file_name())
-			.map(|n| n.to_string_lossy().into_owned())
-			.unwrap_or_else(|| "(no name)".to_owned())
+		self.folder().unwrap_or_else(|| "(no name)".to_owned())
+	}
+
+	/// The last part of its working folder.
+	fn folder(&self) -> Option<String> {
+		self.cwd.as_deref().and_then(|c| std::path::Path::new(c).file_name()).map(|n| n.to_string_lossy().into_owned())
 	}
 
 	fn is_stale(&self, now: u64) -> bool {
@@ -593,6 +625,7 @@ impl Tracker {
 		}
 		if event.ts >= session.last {
 			session.last = event.ts;
+			session.background = event.background_tasks.iter().flatten().map(|t| t.kind.clone()).collect();
 			if let Some(state) = next_state(&event)
 				&& state != session.state
 			{
@@ -610,14 +643,33 @@ impl Tracker {
 	/// Sessions to show on the deck.
 	fn views(&self, now: u64, codex_auto_review: bool) -> Vec<View> {
 		self.sessions
-			.values()
-			.filter(|s| s.visible())
-			.map(|s| {
+			.iter()
+			.filter(|(_, s)| s.visible())
+			.map(|(id, s)| {
 				let (state, since) = s.shown(now, codex_auto_review);
-				let desktop = s.desktop.clone().or_else(|| self.namesake_desktop(s));
-				View { tool: s.tool, label: s.label(), state, stale: s.is_stale(now), since, desktop }
+				let (desktop, placed_by) = match (&s.desktop, self.namesake_desktop(s)) {
+					(Some(desktop), _) => (Some(desktop.clone()), s.desktop_from.label()),
+					(None, Some(desktop)) => (Some(desktop), "Claude namesake"),
+					(None, None) => (None, Evidence::Unknown.label()),
+				};
+				let detail = Detail {
+					folder: s.folder(),
+					placed_by,
+					background: if state == State::Background { s.background.clone() } else { Vec::new() },
+					asks: s.asks.len(),
+					last: s.last,
+				};
+				View { id: id.clone(), tool: s.tool, label: s.label(), state, stale: s.is_stale(now), since, desktop, detail }
 			})
 			.collect()
+	}
+
+	/// Take a session off the deck by hand, as the refresh key does with one
+	/// that looks closed: it comes back with its next event. Returns its label.
+	fn hide(&mut self, id: &str, now: u64) -> Option<String> {
+		let s = self.sessions.get_mut(id).filter(|s| s.ended.is_none())?;
+		s.end(now);
+		Some(format!("{:?} {}", s.tool, s.label()))
 	}
 
 	/// Every ChatGPT window is titled just "ChatGPT", so a Codex thread that
@@ -763,6 +815,20 @@ pub fn now_ms() -> u64 {
 /// Sessions to show on the deck.
 pub fn visible() -> Vec<View> {
 	TRACKER.lock().unwrap().views(now_ms(), CODEX_AUTO_REVIEW.load(Ordering::Relaxed))
+}
+
+/// Take the session `id` (`View::id`) off the deck until its next event.
+/// Returns whether there was such a session.
+pub fn hide(id: &str) -> bool {
+	let hidden = TRACKER.lock().unwrap().hide(id, now_ms());
+	match &hidden {
+		Some(label) => {
+			log::info!("{label}: hidden by hand, back with its next event");
+			changed();
+		}
+		None => log::info!("hide: no live session {id:?}"),
+	}
+	hidden.is_some()
 }
 
 fn handle(tool: Tool, mut event: Event) {
@@ -1498,6 +1564,37 @@ mod tests {
 		// Codex and older Claude Code send no list: a plain answer
 		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 50), ev("Stop", 60)]);
 		assert_eq!(state(&t, Tool::Claude, 61, false), State::Done);
+	}
+
+	#[test]
+	fn a_hidden_session_leaves_the_deck_until_its_next_event() {
+		let mut t = tracker(vec![named(Tool::Claude, "a", "Old tab", Some("D1")), named(Tool::Claude, "b", "Other", Some("D1"))]);
+		feed(&mut t, Tool::Claude, false, vec![Event { session_id: "a".to_owned(), ..ev("Stop", 10) }]);
+		assert_eq!(t.hide(&key(Tool::Claude, "a"), 20), Some("Claude Old tab".to_owned()));
+		let labels = |t: &Tracker, now| t.views(now, false).into_iter().map(|v| v.label).collect::<Vec<_>>();
+		assert_eq!(labels(&t, 21), vec!["Other"]);
+		// hiding it again, or a session that is not there, does nothing
+		assert_eq!(t.hide(&key(Tool::Claude, "a"), 22), None);
+		assert_eq!(t.hide("Claude:nope", 22), None);
+		// it comes back as soon as it does something
+		feed(&mut t, Tool::Claude, false, vec![Event { session_id: "a".to_owned(), ..ev("UserPromptSubmit", 30) }]);
+		let back = t.views(31, false).into_iter().find(|v| v.label == "Old tab").unwrap();
+		assert_eq!((back.state, back.desktop.as_deref()), (State::Working, Some("D1")));
+	}
+
+	#[test]
+	fn the_details_say_what_placed_it_what_runs_in_the_background_and_when_it_last_acted() {
+		let mut t = tracker(vec![Session { cwd: Some(r"D:\Codes\kawa-player".to_owned()), ..named(Tool::Claude, S, "KawaPlayer", None) }]);
+		t.apply(Tool::Claude, ev("UserPromptSubmit", 10), &[window("KawaPlayer", "D1")], false);
+		feed(&mut t, Tool::Claude, false, vec![stop_with(20, &[("monitor", "running"), ("shell", "running")])]);
+		let view = t.views(30, false).remove(0);
+		assert_eq!(view.id, key(Tool::Claude, S));
+		let d = view.detail;
+		assert_eq!((d.folder.as_deref(), d.placed_by, d.asks, d.last), (Some("kawa-player"), "App window", 0, 20));
+		assert_eq!(d.background, vec!["monitor", "shell"]);
+		// once it is back at work, there is no background work to show
+		feed(&mut t, Tool::Claude, false, vec![ev("UserPromptSubmit", 40)]);
+		assert!(t.views(41, false)[0].detail.background.is_empty());
 	}
 
 	#[test]

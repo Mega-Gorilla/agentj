@@ -176,7 +176,7 @@ mod tests {
 	}
 
 	fn view(state: State, since: u64) -> View {
-		View { tool: Claude, label: String::new(), state, stale: false, since, desktop: None }
+		View { id: String::new(), tool: Claude, label: String::new(), state, stale: false, since, desktop: None, detail: Default::default() }
 	}
 
 	#[test]

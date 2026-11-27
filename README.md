@@ -76,7 +76,7 @@ In OpenDeck, the actions are under the **AgentJ** category:
 
 | Action | What it does |
 |---|---|
-| AI Session | One session per key. Select the key and choose which tool it is for (Claude Code / Codex) in its settings. |
+| AI Session | One session per key. Press: go to its desktop. Hold: its details (see below). Select the key and choose which tool it is for (Claude Code / Codex) in its settings. |
 | AI Summary | How many sessions need you / have answered / are working. Press: go to the next session waiting for you. Hold: choose which tools it jumps to. |
 | AI Refresh | Re-read everything now: put each Codex session on the desktop of the ChatGPT window showing it, and clear away sessions that look closed. See the note below. |
 | AI Page Previous / Next | Page through the sessions when there are more than keys. |
@@ -95,6 +95,12 @@ AI profile                                  Desktop profile
 ```
 
 Each column of the AI rows is one virtual desktop: a desktop's Claude Code session sits above its Codex session.
+
+**Holding a session key** turns the session keys into a screen about that session: its desktop, folder, what placed
+it on that desktop, when it last did something, what runs in the background, and how many approvals wait. Three keys
+act on it: **Jump** goes to it, **Hide** takes it off the deck (for a tab you have closed or no longer need; the session
+itself goes on, and it comes back as soon as it does something), **Close** closes the screen. The screen also closes
+after 20 seconds without a press.
 
 **How AI Refresh finds Codex sessions.** Every ChatGPT window is titled just "ChatGPT", so to see which thread each
 one shows, Refresh reads the windows through Windows UI Automation (the accessibility interface). After that, the
@@ -133,7 +139,7 @@ for the Claude desktop app, from the window titled with the session's name.
 |---|---|
 | Codex sessions do not change | Approve the hooks: Codex app **Settings > Hooks**, or `/hooks` in the Codex CLI. |
 | A session does not appear, or is on the wrong desktop | Press **AI Refresh**, or send a prompt from that session's window. |
-| A session that was closed stays on a key | Press **AI Refresh**. |
+| A session that was closed stays on a key | Press **AI Refresh**, or hold its key and press **Hide**. |
 | A terminal session disappeared after AI Refresh | Expected: see [the note on AI Refresh](#3-place-the-keys). It comes back with its next event. |
 | The keys work but show nothing | Restart OpenDeck. |
 | Something else | See the log, `%LOCALAPPDATA%\AgentJ\agentj.log` (`agentj.prev.log` is the previous run). |

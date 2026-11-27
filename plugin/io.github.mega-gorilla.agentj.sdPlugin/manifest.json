@@ -50,7 +50,7 @@
 		{
 			"UUID": "io.github.mega-gorilla.agentj.agent",
 			"Name": "AI Session",
-			"Tooltip": "One Claude Code / Codex session per key: its state by colour, its desktop top right. Press to jump to it. Choose the tool in the key's settings.",
+			"Tooltip": "One Claude Code / Codex session per key: its state by colour, its desktop top right. Press to jump to it; hold for its details and to hide it. Choose the tool in the key's settings.",
 			"PropertyInspectorPath": "pi/agent.html",
 			"Icon": "imgs/agent",
 			"States": [{ "Image": "imgs/agent", "ShowTitle": false }],

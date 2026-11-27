@@ -114,17 +114,6 @@ pub fn jump_option(tool: Tool, on: bool) -> String {
 	svg("#1E293B", &inner)
 }
 
-/// The summary key while its settings screen is open: press to close.
-pub fn settings_close() -> String {
-	let inner = format!(
-		"{}{}{}",
-		centered(34.0, 20.0, "#94A3B8", 700, "Summary key"),
-		centered(66.0, 28.0, "#FFFFFF", 700, "jumps to"),
-		centered(112.0, 19.0, "#FBBF24", 700, "Press to close")
-	);
-	svg("#334155", &inner)
-}
-
 /// The refresh key. `removed` is how many closed sessions the press just
 /// cleared, shown for a moment afterwards.
 pub fn refresh(removed: Option<usize>) -> String {
@@ -136,6 +125,60 @@ pub fn refresh(removed: Option<usize>) -> String {
 	let (label, size) = fit(&label, 22.0, 14.0);
 	let inner = format!("{}{}", centered(56.0, 60.0, "#E2E8F0", 400, "↻"), centered(112.0, size, colour, 700, &label));
 	svg("#1E293B", &inner)
+}
+
+// ---- a session key's detail screen
+
+/// One fact about the session: a small title above its value, and an
+/// optional second line below.
+pub fn info(title: &str, value: &str, more: Option<&str>) -> String {
+	let (value, value_size) = fit(value, 28.0, 13.0);
+	let value_y = if more.is_some() { 76.0 } else { 84.0 };
+	let more = more.map_or_else(String::new, |m| {
+		let (m, size) = fit(m, 18.0, 12.0);
+		centered(112.0, size, "#CBD5E1", 400, &m)
+	});
+	let inner = format!(
+		"{}{}{more}",
+		centered(30.0, 17.0, "#94A3B8", 700, title),
+		centered(value_y, value_size, "#FFFFFF", 700, &value)
+	);
+	svg("#111827", &inner)
+}
+
+/// How long ago, for the detail screen.
+pub fn ago(ms: u64) -> String {
+	match elapsed(ms).as_str() {
+		"now" => "just now".to_owned(),
+		e => format!("{e} ago"),
+	}
+}
+
+/// A button: an icon drawn around (72, 58) and a short caption below it.
+fn button(icon: &str, caption: &str, background: &str) -> String {
+	let (caption, size) = fit(caption, 20.0, 12.0);
+	svg(background, &format!("{icon}{}", centered(118.0, size, "#E2E8F0", 700, &caption)))
+}
+
+/// Go to the session's desktop: a screen with an arrow into it.
+pub fn jump_button(desktop: usize) -> String {
+	let icon = r##"<rect x="32" y="26" width="80" height="54" rx="7" fill="none" stroke="#FFFFFF" stroke-width="6"/><rect x="62" y="84" width="20" height="7" fill="#FFFFFF"/><path d="M50 53 H90 M77 40 L90 53 L77 66" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>"##;
+	button(icon, &format!("Desktop {}", desktop + 1), "#1D4ED8")
+}
+
+/// Take the session off the deck: a crossed-out eye.
+pub fn hide_button() -> String {
+	let background = "#7F1D1D";
+	let icon = format!(
+		r##"<path d="M28 56 Q72 16 116 56 Q72 96 28 56 Z" fill="none" stroke="#FFFFFF" stroke-width="6" stroke-linejoin="round"/><circle cx="72" cy="56" r="13" fill="#FFFFFF"/><path d="M40 90 L104 22" stroke="{background}" stroke-width="16" stroke-linecap="round"/><path d="M40 90 L104 22" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round"/>"##
+	);
+	button(&icon, "Hide", background)
+}
+
+/// Close a screen drawn over the keys: a cross.
+pub fn close_button(caption: &str) -> String {
+	let icon = r##"<path d="M48 32 L96 80 M96 32 L48 80" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"/>"##;
+	button(icon, caption, "#334155")
 }
 
 /// Previous / next page of AI sessions. `target` is (page, pages) it would go

@@ -22,7 +22,7 @@ use tokio::sync::Mutex;
 
 use super::layout::{Pages, option_keys, page_showing, paginate, tour_step, tour_stops};
 use super::render::{self, AgentCard};
-use super::{State, Tool, View, prefs};
+use super::{Detail, State, Tool, View, prefs};
 use crate::deck::{appeared, describe, forget, ordered, redraw, redraw_all, send};
 use crate::desktops::{self, Snapshot, Target};
 
@@ -111,9 +111,19 @@ fn demo_sessions(snap: &Snapshot) -> Vec<View> {
 	let now = super::now_ms();
 	SAMPLES
 		.into_iter()
-		.filter_map(|(tool, label, state, desktop, age)| {
+		.enumerate()
+		.filter_map(|(i, (tool, label, state, desktop, age))| {
+			let id = format!("demo:{i}");
 			let desktop = snap.ids.get(desktop)?.clone();
-			Some(View { tool, label: label.to_owned(), state, stale: false, since: now.saturating_sub(age), desktop: Some(desktop) })
+			let detail = Detail {
+				folder: Some(label.to_owned()),
+				placed_by: "App window",
+				background: if state == State::Background { vec!["shell".to_owned(), "subagent".to_owned()] } else { Vec::new() },
+				asks: usize::from(state == State::Permission),
+				last: now.saturating_sub(age),
+			};
+			let since = now.saturating_sub(age);
+			Some(View { id, tool, label: label.to_owned(), state, stale: false, since, desktop: Some(desktop), detail })
 		})
 		.collect()
 }
@@ -192,12 +202,19 @@ pub async fn draw(snap: &Snapshot) {
 			send(&slot, svg).await;
 		}
 	} else {
+		let detail = detail_shown(&sessions).await;
 		for (slot, pick) in pages.values().flat_map(|p| &p.keys) {
+			if detail.as_ref().is_some_and(|(device, _)| *device == slot.device_id) {
+				continue; // that device shows the detail screen instead
+			}
 			let svg = match pick.map(|i| &sessions[i]) {
 				Some((s, desktop)) => render::agent(&card(s, *desktop, snap.current, now)),
 				None => crate::render::empty(),
 			};
 			send(slot, svg).await;
+		}
+		if let Some((device, i)) = &detail {
+			draw_detail(device, &sessions[*i], snap, now).await;
 		}
 	}
 	for next in [false, true] {
@@ -219,7 +236,7 @@ pub async fn draw(snap: &Snapshot) {
 		let done = count(&|s| s.state == State::Done);
 		let working = count(&|s| matches!(s.state, State::Working | State::Background | State::Reviewing) && !s.stale);
 		for key in summary_keys {
-			let svg = if setup { render::settings_close() } else { render::summary(attention, done, working) };
+			let svg = if setup { render::close_button("Close") } else { render::summary(attention, done, working) };
 			send(&key, svg).await;
 		}
 	}
@@ -237,7 +254,7 @@ static SETUP: Mutex<Option<std::time::Instant>> = Mutex::const_new(None);
 const SETUP_IDLE: Duration = Duration::from_secs(20);
 /// Holding the summary key this long opens the settings screen.
 const LONG_PRESS: Duration = Duration::from_millis(600);
-/// Counts presses of the summary key.
+/// Counts presses of keys that can be held (the summary and session keys).
 static PRESSES: AtomicU64 = AtomicU64::new(0);
 /// The press of the summary key that is still held down and has not yet
 /// turned into a long press.
@@ -265,6 +282,171 @@ async fn setup_keys() -> Vec<(Arc<Instance>, Option<Tool>)> {
 		}
 	}
 	out
+}
+
+// ---- a session key's detail screen
+//
+// Holding an AI Session key turns that device's AI Session keys into a screen
+// about its session: what is known about it, and keys to jump to it, take it
+// off the deck, or close the screen. Like the settings screen, it is drawn
+// over the keys that are there.
+
+/// What the detail screen shows on each AI Session key, in key order (the
+/// suggested layout's two rows of five). Keys beyond these stay dark.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum DetailKey {
+	/// The session's own key, to tell which it is.
+	Card,
+	Desktop,
+	Folder,
+	PlacedBy,
+	LastEvent,
+	Jump,
+	Hide,
+	Background,
+	Asks,
+	Close,
+}
+
+const DETAIL_KEYS: [DetailKey; 10] = [
+	DetailKey::Card,
+	DetailKey::Desktop,
+	DetailKey::Folder,
+	DetailKey::PlacedBy,
+	DetailKey::LastEvent,
+	DetailKey::Jump,
+	DetailKey::Hide,
+	DetailKey::Background,
+	DetailKey::Asks,
+	DetailKey::Close,
+];
+
+/// The open detail screen: on which device, about which session (`View::id`).
+struct DetailScreen {
+	device: String,
+	session: String,
+	touched: std::time::Instant,
+}
+
+static DETAIL: Mutex<Option<DetailScreen>> = Mutex::const_new(None);
+/// The AI Session key held down, until its release.
+static SLOT_HELD: Mutex<Option<Held>> = Mutex::const_new(None);
+
+#[derive(Clone, PartialEq)]
+struct Held {
+	key: InstanceId,
+	press: u64,
+	/// It has turned into a long press: its release is not a press.
+	long: bool,
+}
+
+/// The open detail screen as (device, session); it closes by itself after
+/// `SETUP_IDLE` without a press.
+async fn detail_open() -> Option<(String, String)> {
+	let mut detail = DETAIL.lock().await;
+	if detail.as_ref().is_some_and(|d| d.touched.elapsed() > SETUP_IDLE) {
+		*detail = None;
+	}
+	detail.as_ref().map(|d| (d.device.clone(), d.session.clone()))
+}
+
+/// The detail screen to draw: its device and its session's index in
+/// `sessions`. A screen whose session has gone closes.
+async fn detail_shown(sessions: &[(View, usize)]) -> Option<(String, usize)> {
+	let (device, session) = detail_open().await?;
+	match sessions.iter().position(|(s, _)| s.id == session) {
+		Some(i) => Some((device, i)),
+		None => {
+			*DETAIL.lock().await = None;
+			None
+		}
+	}
+}
+
+/// `device`'s AI Session keys, in order.
+async fn device_slots(device: &str) -> Vec<Arc<Instance>> {
+	ordered(AGENT).await.into_iter().filter(|s| s.device_id == device).collect()
+}
+
+/// Draw the detail screen over `device`'s AI Session keys.
+async fn draw_detail(device: &str, (s, desktop): &(View, usize), snap: &Snapshot, now: u64) {
+	let slots = device_slots(device).await;
+	for (k, slot) in slots.iter().enumerate() {
+		let svg = DETAIL_KEYS.get(k).map_or_else(crate::render::empty, |what| detail_key(*what, s, *desktop, snap, now));
+		send(slot, svg).await;
+	}
+}
+
+fn detail_key(what: DetailKey, s: &View, desktop: usize, snap: &Snapshot, now: u64) -> String {
+	let d = &s.detail;
+	match what {
+		DetailKey::Card => render::agent(&card(s, desktop, snap.current, now)),
+		DetailKey::Desktop => {
+			let name = snap.names.get(desktop).filter(|n| !n.is_empty()).map(String::as_str);
+			render::info("Desktop", &(desktop + 1).to_string(), Some(name.unwrap_or("(no name)")))
+		}
+		DetailKey::Folder => render::info("Folder", d.folder.as_deref().unwrap_or("-"), None),
+		DetailKey::PlacedBy => render::info("Placed by", d.placed_by, None),
+		DetailKey::LastEvent => {
+			let ago = if d.last == 0 { "none".to_owned() } else { render::ago(now.saturating_sub(d.last)) };
+			render::info("Last event", &ago, None)
+		}
+		DetailKey::Background => {
+			let kinds = tally(&d.background);
+			render::info("Background", kinds.first().map_or("none", String::as_str), kinds.get(1).map(String::as_str))
+		}
+		DetailKey::Asks => render::info("Approvals", &d.asks.to_string(), Some("waiting")),
+		DetailKey::Jump => render::jump_button(desktop),
+		DetailKey::Hide => render::hide_button(),
+		DetailKey::Close => render::close_button("Close"),
+	}
+}
+
+/// "shell", "monitor", "monitor" -> "monitor ×2", "shell": most first.
+fn tally(kinds: &[String]) -> Vec<String> {
+	let mut counts: Vec<(&str, usize)> = Vec::new();
+	for kind in kinds {
+		match counts.iter_mut().find(|(k, _)| k == kind) {
+			Some((_, n)) => *n += 1,
+			None => counts.push((kind, 1)),
+		}
+	}
+	counts.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+	counts.into_iter().map(|(k, n)| if n > 1 { format!("{k} ×{n}") } else { k.to_owned() }).collect()
+}
+
+/// A press on the detail screen's key `instance` of `device`, about `session`.
+async fn press_detail(instance: &Instance, device: &str, session: &str) {
+	let k = device_slots(device).await.iter().position(|s| s.instance_id == instance.instance_id);
+	let close = match k.and_then(|k| DETAIL_KEYS.get(k)) {
+		Some(DetailKey::Jump) => {
+			let sessions = agent_view(&desktops::get().snapshot());
+			if let Some((_, desktop)) = sessions.iter().find(|(s, _)| s.id == session) {
+				desktops::get().switch(Target::Index(*desktop));
+			}
+			true
+		}
+		Some(DetailKey::Hide) => {
+			super::hide(session);
+			true
+		}
+		Some(DetailKey::Close) => true,
+		_ => false,
+	};
+	let mut detail = DETAIL.lock().await;
+	if close {
+		*detail = None;
+	} else if let Some(d) = detail.as_mut() {
+		d.touched = std::time::Instant::now();
+	}
+	drop(detail);
+	redraw_all().await;
+}
+
+/// The index in `sessions` of the session on `device`'s AI Session key `key`.
+async fn picked(sessions: &[(View, usize)], device: &str, key: &InstanceId) -> Option<usize> {
+	let pages = agent_pages(sessions).await;
+	pages.get(device).and_then(|p| p.keys.iter().find(|(slot, _)| slot.instance_id == *key)).and_then(|(_, pick)| *pick)
 }
 
 // ---- actions
@@ -297,9 +479,44 @@ impl Action for AgentAction {
 		Ok(())
 	}
 
-	/// Go to the desktop the session is on. An empty slot does nothing. In
-	/// the settings screen, tick or clear the key's checkbox instead.
+	/// Held long enough on a session, the key opens its detail screen
+	/// (without waiting for the release). Not while a screen is open: then
+	/// the keys are that screen's.
+	async fn key_down(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		if setup_open().await || detail_open().await.is_some_and(|(device, _)| device == instance.device_id) {
+			return Ok(());
+		}
+		let held = Held { key: instance.instance_id.clone(), press: PRESSES.fetch_add(1, Ordering::Relaxed) + 1, long: false };
+		*SLOT_HELD.lock().await = Some(held.clone());
+		let device = instance.device_id.clone();
+		tokio::spawn(async move {
+			tokio::time::sleep(LONG_PRESS).await;
+			{
+				let mut now_held = SLOT_HELD.lock().await;
+				if now_held.as_ref() != Some(&held) {
+					return; // released, or another key pressed, in the meantime
+				}
+				*now_held = Some(Held { long: true, ..held.clone() });
+			}
+			let key = held.key;
+			let sessions = agent_view(&desktops::get().snapshot());
+			let Some(i) = picked(&sessions, &device, &key).await else { return };
+			log::info!("{:?} {}: key held, detail screen", sessions[i].0.tool, sessions[i].0.label);
+			let session = sessions[i].0.id.clone();
+			*DETAIL.lock().await = Some(DetailScreen { device, session, touched: std::time::Instant::now() });
+			redraw_all().await;
+		});
+		Ok(())
+	}
+
+	/// A short press: go to the desktop the session is on; an empty slot does
+	/// nothing. In the settings screen, tick or clear the key's checkbox; in
+	/// the detail screen, do what the key there says.
 	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		let held = SLOT_HELD.lock().await.take().filter(|h| h.key == instance.instance_id);
+		if held.as_ref().is_some_and(|h| h.long) {
+			return Ok(()); // the end of a long press
+		}
 		if setup_open().await {
 			let option = setup_keys().await.into_iter().find(|(slot, _)| slot.instance_id == instance.instance_id);
 			if let Some((_, Some(tool))) = option {
@@ -310,13 +527,15 @@ impl Action for AgentAction {
 			}
 			return Ok(());
 		}
+		if let Some((device, session)) = detail_open().await.filter(|(device, _)| *device == instance.device_id) {
+			press_detail(instance, &device, &session).await;
+			return Ok(());
+		}
+		if held.is_none() {
+			return Ok(()); // pressed while a screen was open, released after it closed
+		}
 		let sessions = agent_view(&desktops::get().snapshot());
-		let pages = agent_pages(&sessions).await;
-		let pick = pages
-			.get(&instance.device_id)
-			.and_then(|p| p.keys.iter().find(|(slot, _)| slot.instance_id == instance.instance_id))
-			.and_then(|(_, pick)| *pick);
-		if let Some(i) = pick {
+		if let Some(i) = picked(&sessions, &instance.device_id, &instance.instance_id).await {
 			desktops::get().switch(Target::Index(sessions[i].1));
 		}
 		Ok(())
@@ -398,7 +617,9 @@ impl Action for AgentsSummaryAction {
 
 	async fn will_disappear(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		forget(instance).await;
-		*SETUP.lock().await = None; // leaving the profile closes the settings screen
+		// leaving the profile closes the settings and detail screens
+		*SETUP.lock().await = None;
+		*DETAIL.lock().await = None;
 		Ok(())
 	}
 
@@ -417,6 +638,7 @@ impl Action for AgentsSummaryAction {
 				*held = None; // the release that follows is not a short press
 			}
 			log::info!("summary key held: settings screen");
+			*DETAIL.lock().await = None;
 			*SETUP.lock().await = Some(std::time::Instant::now());
 			redraw_all().await;
 		});
@@ -531,9 +753,50 @@ pub fn preview() -> Vec<(String, Vec<String>)> {
 		crate::render::empty(),
 		render::refresh(None),
 		render::page_arrow(false, None, false),
-		render::settings_close(),
+		render::close_button("Close"),
 		render::page_arrow(true, None, false),
 	]);
 	out.push(("AI: summary key held (settings)".to_owned(), setup));
+
+	// The detail screen of the Background sample.
+	let snap = Snapshot {
+		names: ["", "web-app", "api", "docs", "mobile", "design"].map(str::to_owned).to_vec(),
+		ids: (0..6).map(|i| format!("D{i}")).collect(),
+		current: 2,
+	};
+	let now = super::now_ms();
+	let sessions = demo_sessions(&snap);
+	let (s, desktop) = sessions
+		.iter()
+		.find(|s| s.state == State::Background)
+		.and_then(|s| Some((s, snap.ids.iter().position(|d| Some(d) == s.desktop.as_ref())?)))
+		.expect("a Background sample");
+	let mut detail: Vec<String> = DETAIL_KEYS.iter().map(|what| detail_key(*what, s, desktop, &snap, now)).collect();
+	detail.extend([
+		crate::render::empty(),
+		render::refresh(None),
+		render::page_arrow(false, None, false),
+		render::summary(2, 2, 4),
+		render::page_arrow(true, None, false),
+	]);
+	out.push(("AI: session key held (detail)".to_owned(), detail));
 	out
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn background_kinds_are_counted_most_first() {
+		let kinds: Vec<String> = ["shell", "monitor", "subagent", "monitor"].map(str::to_owned).to_vec();
+		assert_eq!(tally(&kinds), vec!["monitor ×2", "shell", "subagent"]);
+		assert!(tally(&[]).is_empty());
+	}
+
+	#[test]
+	fn the_detail_screen_has_its_three_actions_on_the_second_row() {
+		let at = |what| DETAIL_KEYS.iter().position(|k| *k == what);
+		assert_eq!((at(DetailKey::Card), at(DetailKey::Jump), at(DetailKey::Hide), at(DetailKey::Close)), (Some(0), Some(5), Some(6), Some(9)));
+	}
 }
