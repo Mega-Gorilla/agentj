@@ -221,7 +221,9 @@ pub async fn draw(snap: &Snapshot) {
 	for next in [false, true] {
 		for key in visible_instances(if next { AGENT_NEXT } else { AGENT_PREV }).await {
 			if in_detail(&key.device_id) {
-				send(&key, crate::render::empty()).await;
+				// bottom right in the suggested layout: the detail screen's close key
+				let svg = if next { render::close_button("Close") } else { crate::render::empty() };
+				send(&key, svg).await;
 				continue;
 			}
 			let page = pages.get(&key.device_id);
@@ -242,8 +244,13 @@ pub async fn draw(snap: &Snapshot) {
 		let done = count(&|s| s.state == State::Done);
 		let working = count(&|s| matches!(s.state, State::Working | State::Background | State::Reviewing) && !s.stale);
 		for key in summary_keys {
-			let closes = setup || in_detail(&key.device_id);
-			let svg = if closes { render::close_button("Close") } else { render::summary(attention, done, working) };
+			let svg = if setup {
+				render::close_button("Close")
+			} else if in_detail(&key.device_id) {
+				crate::render::empty()
+			} else {
+				render::summary(attention, done, working)
+			};
 			send(&key, svg).await;
 		}
 	}
@@ -296,8 +303,9 @@ async fn setup_keys() -> Vec<(Arc<Instance>, Option<Tool>)> {
 // Holding an AI Session key turns that device's AI Session keys into a screen
 // about its session: what is known about it, and keys to jump to it or take
 // it off the deck. Like the settings screen, it is drawn over the keys that
-// are there, and the summary key closes it. The refresh and page keys go dark
-// meanwhile: they have nothing to do with the screen.
+// are there. The next-page key (bottom right in the suggested layout) closes
+// it; the refresh, previous-page and summary keys go dark meanwhile, as they
+// have nothing to do with the screen.
 
 /// What the detail screen shows on each AI Session key, in key order (the
 /// suggested layout's two rows of five). Keys beyond these stay dark.
@@ -573,9 +581,15 @@ impl<const NEXT_DIR: bool> Action for PageAction<NEXT_DIR> {
 		Ok(())
 	}
 
+	/// Turn the page; with the detail screen open, the next key closes it and
+	/// the previous key is dark.
 	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		if in_detail_screen(instance).await {
-			return Ok(()); // dark while the detail screen is open
+			if NEXT_DIR {
+				*DETAIL.lock().await = None;
+				redraw_all().await;
+			}
+			return Ok(());
 		}
 		let sessions = agent_view(&desktops::get().snapshot());
 		let pages = agent_pages(&sessions).await;
@@ -644,7 +658,7 @@ impl Action for AgentsSummaryAction {
 	}
 
 	/// Held long enough, the key opens its settings screen (without waiting
-	/// for the release). Not while it is the detail screen's close key.
+	/// for the release). Not while the detail screen is open: then it is dark.
 	async fn key_down(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		let press = PRESSES.fetch_add(1, Ordering::Relaxed) + 1;
 		*HELD.lock().await = Some(press);
@@ -670,7 +684,7 @@ impl Action for AgentsSummaryAction {
 
 	/// A short press. Go to the session that most needs the user; pressed
 	/// again soon after, to the next one, and round again after the last.
-	/// With the settings or the detail screen open, close it.
+	/// With the settings screen open, close it.
 	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		if HELD.lock().await.take().is_none() {
 			return Ok(()); // the end of a long press
@@ -681,9 +695,7 @@ impl Action for AgentsSummaryAction {
 			return Ok(());
 		}
 		if in_detail_screen(instance).await {
-			*DETAIL.lock().await = None;
-			redraw_all().await;
-			return Ok(());
+			return Ok(()); // dark while the detail screen is open
 		}
 		let sessions = agent_view(&desktops::get().snapshot());
 		let stops = tour_stops(&sessions, prefs::get());
@@ -800,13 +812,13 @@ pub fn preview() -> Vec<(String, Vec<String>)> {
 		.and_then(|s| Some((s, snap.ids.iter().position(|d| Some(d) == s.desktop.as_ref())?)))
 		.expect("a Background sample");
 	let mut detail: Vec<String> = DETAIL_KEYS.iter().map(|what| detail_key(*what, s, desktop, &snap, now)).collect();
-	// [→Default], refresh and page keys dark, the summary key closes
+	// [→Default]; refresh, previous page and summary dark; the next-page key closes
 	detail.extend([
 		crate::render::empty(),
 		crate::render::empty(),
 		crate::render::empty(),
-		render::close_button("Close"),
 		crate::render::empty(),
+		render::close_button("Close"),
 	]);
 	out.push(("AI: session key held (detail)".to_owned(), detail));
 	out

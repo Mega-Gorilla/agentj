@@ -99,8 +99,8 @@ Each column of the AI rows is one virtual desktop: a desktop's Claude Code sessi
 **Holding a session key** turns the session keys into a screen about that session: its state (and since when), its
 desktop, folder, what placed it on that desktop, what runs in the background, how many approvals wait, and when it last
 did something. Two keys act on it: **Jump** goes to it, **Hide** takes it off the deck (for a tab you have closed or no
-longer need; the session itself goes on, and it comes back as soon as it does something). The summary key becomes
-**Close**, and Refresh and the page keys go dark until the screen closes. It also closes after 20 seconds without a
+longer need; the session itself goes on, and it comes back as soon as it does something). The next-page key (bottom
+right) becomes **Close**, and Refresh, the previous-page key and the summary key go dark until the screen closes. It also closes after 20 seconds without a
 press.
 
 **How AI Refresh finds Codex sessions.** Every ChatGPT window is titled just "ChatGPT", so to see which thread each
