@@ -26,12 +26,12 @@ pub struct AgentCard<'a> {
 	pub here: bool,
 }
 
-/// One AI session: tool, desktop number, name, state and how long it has been in it.
-pub fn agent(card: &AgentCard) -> String {
-	let (background, label, label_colour) = if card.stale {
+/// A state's background colour, its label and the label's colour.
+fn look(state: State, stale: bool) -> (&'static str, &'static str, &'static str) {
+	if stale {
 		("#27272A", "Stalled?", "#A1A1AA")
 	} else {
-		match card.state {
+		match state {
 			State::Permission => ("#C2410C", "Approve", "#FFFFFF"),
 			State::Input => ("#B45309", "Input", "#FFFFFF"),
 			State::Error => ("#991B1B", "Error", "#FFFFFF"),
@@ -47,11 +47,21 @@ pub fn agent(card: &AgentCard) -> String {
 			// (A resumed session is Idle even if its last answer is unread.)
 			State::Idle => ("#15803D", "Idle", "#DCFCE7"),
 		}
-	};
-	let (tool, mut tool_colour) = match card.tool {
+	}
+}
+
+/// The tool's name and its colour.
+fn tool_name(tool: Tool) -> (&'static str, &'static str) {
+	match tool {
 		Tool::Claude => ("Claude", "#F4A98A"),
 		Tool::Codex => ("Codex", "#9FE7C9"),
-	};
+	}
+}
+
+/// One AI session: tool, desktop number, name, state and how long it has been in it.
+pub fn agent(card: &AgentCard) -> String {
+	let (background, label, label_colour) = look(card.state, card.stale);
+	let (tool, mut tool_colour) = tool_name(card.tool);
 	if !card.stale && !matches!(card.state, State::Working | State::Background | State::Reviewing) {
 		// The tool colours do not read well on the strong state colours.
 		tool_colour = "#FFFFFF";
@@ -97,10 +107,7 @@ pub fn summary(attention: usize, done: usize, working: usize) -> String {
 /// A checkbox in the summary key's settings screen: whether that key goes to
 /// this tool's sessions.
 pub fn jump_option(tool: Tool, on: bool) -> String {
-	let (name, name_colour) = match tool {
-		Tool::Claude => ("Claude", "#F4A98A"),
-		Tool::Codex => ("Codex", "#9FE7C9"),
-	};
+	let (name, name_colour) = tool_name(tool);
 	let (fill, stroke, mark, label, label_colour) = if on {
 		("#16A34A", "#16A34A", r##"<path d="M58 70 L68 80 L87 59" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>"##, "Jump: on", "#4ADE80")
 	} else {
@@ -128,6 +135,26 @@ pub fn refresh(removed: Option<usize>) -> String {
 }
 
 // ---- a session key's detail screen
+
+/// Which session the screen is about: its tool above its name.
+pub fn session_name(tool: Tool, name: &str) -> String {
+	let (tool, colour) = tool_name(tool);
+	let (name, size) = fit(name, 30.0, 13.0);
+	svg("#111827", &format!("{}{}", centered(34.0, 22.0, colour, 700, tool), centered(84.0, size, "#FFFFFF", 700, &name)))
+}
+
+/// The session's state in its colour, how long it has been in it and since when.
+pub fn state(state: State, stale: bool, elapsed_ms: u64, since: Option<&str>) -> String {
+	let (background, label, label_colour) = look(state, stale);
+	let (label, size) = fit(label, 30.0, 14.0);
+	let since = since.map_or_else(String::new, |clock| centered(122.0, 17.0, "#FFFFFF", 400, &format!("since {clock}")));
+	let inner = format!(
+		"{}{}{since}",
+		centered(46.0, size, label_colour, 700, &label),
+		centered(88.0, 26.0, "#FFFFFF", 700, &elapsed(elapsed_ms))
+	);
+	svg(background, &inner)
+}
 
 /// One fact about the session: a small title above its value, and an
 /// optional second line below.

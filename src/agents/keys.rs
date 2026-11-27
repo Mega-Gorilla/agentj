@@ -194,6 +194,8 @@ pub async fn draw(snap: &Snapshot) {
 	let sessions = agent_view(snap);
 	let pages = agent_pages(&sessions).await;
 	let setup = setup_open().await;
+	let detail = if setup { None } else { detail_shown(&sessions).await };
+	let in_detail = |device: &str| detail.as_ref().is_some_and(|(d, _)| d == device);
 	if setup {
 		// The summary key's settings take over the session keys.
 		let prefs = prefs::get();
@@ -202,9 +204,8 @@ pub async fn draw(snap: &Snapshot) {
 			send(&slot, svg).await;
 		}
 	} else {
-		let detail = detail_shown(&sessions).await;
 		for (slot, pick) in pages.values().flat_map(|p| &p.keys) {
-			if detail.as_ref().is_some_and(|(device, _)| *device == slot.device_id) {
+			if in_detail(&slot.device_id) {
 				continue; // that device shows the detail screen instead
 			}
 			let svg = match pick.map(|i| &sessions[i]) {
@@ -219,6 +220,10 @@ pub async fn draw(snap: &Snapshot) {
 	}
 	for next in [false, true] {
 		for key in visible_instances(if next { AGENT_NEXT } else { AGENT_PREV }).await {
+			if in_detail(&key.device_id) {
+				send(&key, crate::render::empty()).await;
+				continue;
+			}
 			let page = pages.get(&key.device_id);
 			let target = page.and_then(|p| Some((p.step(next)?, p.pages)));
 			let attention = page.is_some_and(|p| p.attention_toward(next, &sessions));
@@ -227,7 +232,8 @@ pub async fn draw(snap: &Snapshot) {
 	}
 	let swept = SWEPT.lock().await.filter(|(at, _)| at.elapsed() < SWEPT_SHOWN).map(|(_, removed)| removed);
 	for key in visible_instances(AGENT_REFRESH).await {
-		send(&key, render::refresh(swept)).await;
+		let svg = if in_detail(&key.device_id) { crate::render::empty() } else { render::refresh(swept) };
+		send(&key, svg).await;
 	}
 	let summary_keys = visible_instances(AGENTS).await;
 	if !summary_keys.is_empty() {
@@ -236,7 +242,8 @@ pub async fn draw(snap: &Snapshot) {
 		let done = count(&|s| s.state == State::Done);
 		let working = count(&|s| matches!(s.state, State::Working | State::Background | State::Reviewing) && !s.stale);
 		for key in summary_keys {
-			let svg = if setup { render::close_button("Close") } else { render::summary(attention, done, working) };
+			let closes = setup || in_detail(&key.device_id);
+			let svg = if closes { render::close_button("Close") } else { render::summary(attention, done, working) };
 			send(&key, svg).await;
 		}
 	}
@@ -287,38 +294,39 @@ async fn setup_keys() -> Vec<(Arc<Instance>, Option<Tool>)> {
 // ---- a session key's detail screen
 //
 // Holding an AI Session key turns that device's AI Session keys into a screen
-// about its session: what is known about it, and keys to jump to it, take it
-// off the deck, or close the screen. Like the settings screen, it is drawn
-// over the keys that are there.
+// about its session: what is known about it, and keys to jump to it or take
+// it off the deck. Like the settings screen, it is drawn over the keys that
+// are there, and the summary key closes it. The refresh and page keys go dark
+// meanwhile: they have nothing to do with the screen.
 
 /// What the detail screen shows on each AI Session key, in key order (the
 /// suggested layout's two rows of five). Keys beyond these stay dark.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum DetailKey {
-	/// The session's own key, to tell which it is.
-	Card,
+	/// Which session it is: tool and name.
+	Name,
+	State,
 	Desktop,
 	Folder,
 	PlacedBy,
-	LastEvent,
 	Jump,
 	Hide,
 	Background,
 	Asks,
-	Close,
+	LastEvent,
 }
 
 const DETAIL_KEYS: [DetailKey; 10] = [
-	DetailKey::Card,
+	DetailKey::Name,
+	DetailKey::State,
 	DetailKey::Desktop,
 	DetailKey::Folder,
 	DetailKey::PlacedBy,
-	DetailKey::LastEvent,
 	DetailKey::Jump,
 	DetailKey::Hide,
 	DetailKey::Background,
 	DetailKey::Asks,
-	DetailKey::Close,
+	DetailKey::LastEvent,
 ];
 
 /// The open detail screen: on which device, about which session (`View::id`).
@@ -348,6 +356,11 @@ async fn detail_open() -> Option<(String, String)> {
 		*detail = None;
 	}
 	detail.as_ref().map(|d| (d.device.clone(), d.session.clone()))
+}
+
+/// Whether the detail screen is open on `instance`'s device.
+async fn in_detail_screen(instance: &Instance) -> bool {
+	detail_open().await.is_some_and(|(device, _)| device == instance.device_id)
 }
 
 /// The detail screen to draw: its device and its session's index in
@@ -380,7 +393,11 @@ async fn draw_detail(device: &str, (s, desktop): &(View, usize), snap: &Snapshot
 fn detail_key(what: DetailKey, s: &View, desktop: usize, snap: &Snapshot, now: u64) -> String {
 	let d = &s.detail;
 	match what {
-		DetailKey::Card => render::agent(&card(s, desktop, snap.current, now)),
+		DetailKey::Name => render::session_name(s.tool, &s.label),
+		DetailKey::State => {
+			let since = super::winutil::local_clock(s.since);
+			render::state(s.state, s.stale, now.saturating_sub(s.since), since.as_deref())
+		}
 		DetailKey::Desktop => {
 			let name = snap.names.get(desktop).filter(|n| !n.is_empty()).map(String::as_str);
 			render::info("Desktop", &(desktop + 1).to_string(), Some(name.unwrap_or("(no name)")))
@@ -398,7 +415,6 @@ fn detail_key(what: DetailKey, s: &View, desktop: usize, snap: &Snapshot, now: u
 		DetailKey::Asks => render::info("Approvals", &d.asks.to_string(), Some("waiting")),
 		DetailKey::Jump => render::jump_button(desktop),
 		DetailKey::Hide => render::hide_button(),
-		DetailKey::Close => render::close_button("Close"),
 	}
 }
 
@@ -430,7 +446,6 @@ async fn press_detail(instance: &Instance, device: &str, session: &str) {
 			super::hide(session);
 			true
 		}
-		Some(DetailKey::Close) => true,
 		_ => false,
 	};
 	let mut detail = DETAIL.lock().await;
@@ -483,7 +498,7 @@ impl Action for AgentAction {
 	/// (without waiting for the release). Not while a screen is open: then
 	/// the keys are that screen's.
 	async fn key_down(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
-		if setup_open().await || detail_open().await.is_some_and(|(device, _)| device == instance.device_id) {
+		if setup_open().await || in_detail_screen(instance).await {
 			return Ok(());
 		}
 		let held = Held { key: instance.instance_id.clone(), press: PRESSES.fetch_add(1, Ordering::Relaxed) + 1, long: false };
@@ -527,8 +542,7 @@ impl Action for AgentAction {
 			}
 			return Ok(());
 		}
-		if let Some((device, session)) = detail_open().await.filter(|(device, _)| *device == instance.device_id) {
-			press_detail(instance, &device, &session).await;
+		if let Some((device, session)) = detail_open().await.filter(|(device, _)| *device == instance.device_id) {			press_detail(instance, &device, &session).await;
 			return Ok(());
 		}
 		if held.is_none() {
@@ -560,6 +574,9 @@ impl<const NEXT_DIR: bool> Action for PageAction<NEXT_DIR> {
 	}
 
 	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		if in_detail_screen(instance).await {
+			return Ok(()); // dark while the detail screen is open
+		}
 		let sessions = agent_view(&desktops::get().snapshot());
 		let pages = agent_pages(&sessions).await;
 		let Some(page) = pages.get(&instance.device_id) else { return Ok(()) };
@@ -589,7 +606,10 @@ impl Action for RefreshAction {
 		Ok(())
 	}
 
-	async fn key_up(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+		if in_detail_screen(instance).await {
+			return Ok(()); // dark while the detail screen is open
+		}
 		desktops::get().refresh();
 		let removed = super::sweep().await;
 		log::info!("refresh: {removed} closed session(s) removed");
@@ -624,10 +644,13 @@ impl Action for AgentsSummaryAction {
 	}
 
 	/// Held long enough, the key opens its settings screen (without waiting
-	/// for the release).
-	async fn key_down(&self, _: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
+	/// for the release). Not while it is the detail screen's close key.
+	async fn key_down(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		let press = PRESSES.fetch_add(1, Ordering::Relaxed) + 1;
 		*HELD.lock().await = Some(press);
+		if in_detail_screen(instance).await {
+			return Ok(());
+		}
 		tokio::spawn(async move {
 			tokio::time::sleep(LONG_PRESS).await;
 			{
@@ -647,13 +670,18 @@ impl Action for AgentsSummaryAction {
 
 	/// A short press. Go to the session that most needs the user; pressed
 	/// again soon after, to the next one, and round again after the last.
-	/// With the settings screen open, close it.
+	/// With the settings or the detail screen open, close it.
 	async fn key_up(&self, instance: &Instance, _: &Self::Settings) -> OpenActionResult<()> {
 		if HELD.lock().await.take().is_none() {
 			return Ok(()); // the end of a long press
 		}
 		if setup_open().await {
 			*SETUP.lock().await = None;
+			redraw_all().await;
+			return Ok(());
+		}
+		if in_detail_screen(instance).await {
+			*DETAIL.lock().await = None;
 			redraw_all().await;
 			return Ok(());
 		}
@@ -772,12 +800,13 @@ pub fn preview() -> Vec<(String, Vec<String>)> {
 		.and_then(|s| Some((s, snap.ids.iter().position(|d| Some(d) == s.desktop.as_ref())?)))
 		.expect("a Background sample");
 	let mut detail: Vec<String> = DETAIL_KEYS.iter().map(|what| detail_key(*what, s, desktop, &snap, now)).collect();
+	// [→Default], refresh and page keys dark, the summary key closes
 	detail.extend([
 		crate::render::empty(),
-		render::refresh(None),
-		render::page_arrow(false, None, false),
-		render::summary(2, 2, 4),
-		render::page_arrow(true, None, false),
+		crate::render::empty(),
+		crate::render::empty(),
+		render::close_button("Close"),
+		crate::render::empty(),
 	]);
 	out.push(("AI: session key held (detail)".to_owned(), detail));
 	out
@@ -795,8 +824,11 @@ mod tests {
 	}
 
 	#[test]
-	fn the_detail_screen_has_its_three_actions_on_the_second_row() {
+	fn the_detail_screen_opens_with_name_and_state_and_has_its_actions_first_on_the_second_row() {
 		let at = |what| DETAIL_KEYS.iter().position(|k| *k == what);
-		assert_eq!((at(DetailKey::Card), at(DetailKey::Jump), at(DetailKey::Hide), at(DetailKey::Close)), (Some(0), Some(5), Some(6), Some(9)));
+		assert_eq!(
+			(at(DetailKey::Name), at(DetailKey::State), at(DetailKey::Jump), at(DetailKey::Hide)),
+			(Some(0), Some(1), Some(5), Some(6))
+		);
 	}
 }

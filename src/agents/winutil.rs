@@ -160,3 +160,20 @@ pub fn foreground() -> Option<WindowInfo> {
 	}
 	Some(info(hwnd))
 }
+
+/// The local time of day ("13:02") of a time in ms since the Unix epoch, in
+/// the time zone (and daylight saving) Windows has for that date.
+pub fn local_clock(ms: u64) -> Option<String> {
+	use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
+	use windows::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
+	// FILETIME counts 100 ns steps since 1601.
+	let ticks = ms.checked_mul(10_000)?.checked_add(116_444_736_000_000_000)?;
+	let file_time = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+	let (mut utc, mut local) = (SYSTEMTIME::default(), SYSTEMTIME::default());
+	// SAFETY: plain conversions between structs on the stack.
+	unsafe {
+		FileTimeToSystemTime(&file_time, &mut utc).ok()?;
+		SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).ok()?;
+	}
+	Some(format!("{:02}:{:02}", local.wHour, local.wMinute))
+}

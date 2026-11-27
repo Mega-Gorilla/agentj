@@ -91,15 +91,22 @@ AI Session キーは、キーの設定（`"tool": "claude"` / `"codex"`）で受
 変わる（設定画面と同じく、今あるキーの上に描く）。キーの順に次のとおり（11番目以降は消灯）。
 
 ```
-[そのセッションのキー] [Desktop 番号と名前] [Folder] [Placed by] [Last event]
-[Jump]                 [Hide]               [Background] [Approvals] [Close]
+[ツール名とセッション名] [状態・経過時間・始まった時刻] [Desktop 番号と名前] [Folder]    [Placed by]
+[Jump]                   [Hide]                         [Background]        [Approvals] [Last event]
+[→Default]               [消灯]                         [消灯]              [Close ×]   [消灯]
 ```
+
+3段目は AI Session キーではないキーで、詳細画面の間は集計キーが閉じるボタン（設定画面と同じ）になり、Refresh と
+ページ送りのキーは消灯して押しても何もしない。プロファイル切り替えキーは OpenDeck 付属なので変わらない。
+状態のキーは、セッションのキーと同じ色で状態を大きく描き、経過時間と、その状態になった時刻（Windows の
+タイムゾーンでの時:分）を添える。
 
 - Placed by: デスクトップを何で決めたか。`App window`（エージェントのアプリ）、`Terminal`、`Claude namesake`
   （同じ名前の Claude セッションのデスクトップを借りている Codex）、`Unknown`（以前の記録）
 - Background: バックグラウンド処理の種類と数（例 `monitor ×3`）。Background の状態のときだけ
 - 操作のキーはアイコンで描く。Jump（画面と矢印）はそのデスクトップへ移動、Hide（斜線の入った目）はキーから外す、
-  Close（×）は閉じる。Jump と Hide は押すと画面も閉じる。20秒触らなければ閉じ、プロファイルを離れても閉じる
+  集計キーの Close（×）は閉じる。Jump と Hide は押すと画面も閉じる。20秒触らなければ閉じ、プロファイルを離れても
+  閉じる。集計キーを置いていない配置では、Jump、Hide、20秒の自動クローズで閉じる
 - Hide は AI Refresh が閉じたセッションにするのと同じ扱い（終了とみなす）で、セッション自体には何もしない。
   何か動きがあればすぐ戻る。ただし未読の返答済みは次に入力するまで戻らない。ログに `hidden by hand` と書く
 - 詳細画面を開いた長押しの指を離しても、その位置のキーは押されたことにならない
